@@ -1,0 +1,58 @@
+@import "tailwindcss";
+
+/*
+  naym v1 identity (design review D10, revisable by /design-consultation):
+  warm paper, ink, one terracotta accent. No gradients, no decorative
+  shadows — depth via color planes. Names wear Fraunces; the app wears
+  almost nothing.
+*/
+:root {
+  --paper: #faf7f2;
+  --paper-dim: #f1ece3;
+  --ink: #221f1a;
+  --ink-soft: #6f675c;
+  --terra: #c26a4a;
+  --terra-deep: #a85537;
+}
+
+@theme inline {
+  --color-paper: var(--paper);
+  --color-paper-dim: var(--paper-dim);
+  --color-ink: var(--ink);
+  --color-ink-soft: var(--ink-soft);
+  --color-terra: var(--terra);
+  --color-terra-deep: var(--terra-deep);
+  --font-display: var(--font-fraunces);
+  --font-sans: var(--font-schibsted);
+}
+
+html,
+body {
+  background: var(--paper-dim);
+  color: var(--ink);
+  font-family: var(--font-schibsted), system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Desktop: the app lives on a centered 480px stage on dimmed paper. */
+.stage {
+  margin: 0 auto;
+  max-width: 480px;
+  min-height: 100dvh;
+  background: var(--paper);
+  display: flex;
+  flex-direction: column;
+}
+
+.font-display {
+  font-family: var(--font-fraunces), serif;
+}
+
+/* Swipe cards must never fight page scroll (Framer/motion issue #185 class). */
+.swipe-surface {
+  touch-action: pan-y;
+}
+
+button {
+  cursor: pointer;
+}
