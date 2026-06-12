@@ -1,6 +1,5 @@
-import { createHash } from "node:crypto";
 import { nanoid } from "nanoid";
-import nordic from "@/data/decks/nordic.json";
+import { DEFAULT_DECK_ID, getDeckEntry } from "./decks";
 import { getStore, SESSION_TTL_S } from "./store";
 import {
   buildRound2Deck,
@@ -17,12 +16,6 @@ import type {
   SessionMeta,
   Swipe,
 } from "./types";
-
-const DECK: NameCard[] = nordic.names;
-const DECK_VERSION = createHash("sha256")
-  .update(JSON.stringify(nordic))
-  .digest("hex")
-  .slice(0, 12);
 
 type TokenRecord = { id: string; role: Role };
 
@@ -47,16 +40,21 @@ export async function logEvent(
   });
 }
 
-export async function createSession(): Promise<{ creatorToken: string; sessionId: string }> {
+export async function createSession(
+  deckId: string = DEFAULT_DECK_ID,
+): Promise<{ creatorToken: string; sessionId: string } | null> {
+  const entry = getDeckEntry(deckId);
+  if (!entry) return null; // unknown deck — route turns this into a 400
   const store = getStore();
   const id = nanoid(12);
   const creatorToken = nanoid(21);
   const inviteToken = nanoid(21);
   const meta: SessionMeta & { inviteToken: string } = {
     id,
-    deckId: nordic.deckId,
-    deckVersion: DECK_VERSION,
-    deck: DECK, // full snapshot pinned at creation — deck edits never corrupt live sessions
+    deckId: entry.deckId,
+    deckTitle: entry.title,
+    deckVersion: entry.version,
+    deck: entry.names, // full snapshot pinned at creation — deck edits never corrupt live sessions
     contract: "love",
     createdAt: Date.now(),
     bStartedAt: null,
@@ -195,6 +193,8 @@ export async function getReveal(token: string): Promise<RevealPayload | null> {
   return payload;
 }
 
+// (older sessions created before multi-deck carry no deckTitle — handled at read)
+
 /** Role-appropriate state view. NEVER includes the other partner's swipes. */
 export async function getStateView(token: string) {
   const resolved = await resolveToken(token);
@@ -228,6 +228,7 @@ export async function getStateView(token: string) {
     role,
     deck: meta.deck,
     deckId: meta.deckId,
+    deckTitle: meta.deckTitle ?? "name deck",
     ownSwipes: own,
     ownDone,
     otherDone: role === "A" ? bDone : aDone,
@@ -238,5 +239,3 @@ export async function getStateView(token: string) {
     round2,
   };
 }
-
-export { DECK_VERSION };

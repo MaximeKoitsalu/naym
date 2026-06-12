@@ -12,6 +12,7 @@ import { ExpiredScreen, LoadingScreen } from "./Screens";
 type StateView = {
   role: "A" | "B";
   deck: NameCard[];
+  deckTitle: string;
   ownSwipes: Swipe[];
   ownDone: boolean;
   otherDone: boolean;
@@ -133,6 +134,7 @@ export default function SessionClient({ token }: { token: string }) {
     return (
       <InviteLanding
         deckSize={view.deck.length}
+        deckTitle={view.deckTitle}
         onStart={async () => {
           await fetch("/api/start", {
             method: "POST",

@@ -29,6 +29,8 @@ export type Role = "A" | "B";
 export type SessionMeta = {
   id: string;
   deckId: string;
+  /** Display title ("greek deck"); optional on pre-multi-deck sessions. */
+  deckTitle?: string;
   deckVersion: string;
   /** Full deck snapshot pinned at creation — the session replays exactly this deck. */
   deck: NameCard[];

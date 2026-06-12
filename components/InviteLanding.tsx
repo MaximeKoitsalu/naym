@@ -7,16 +7,19 @@
 */
 export default function InviteLanding({
   deckSize,
+  deckTitle,
   onStart,
 }: {
   deckSize: number;
+  deckTitle: string;
   onStart: () => void;
 }) {
+  const origin = deckTitle.replace(/ deck$/, "");
   return (
     <main className="flex flex-1 flex-col justify-center gap-6 px-8">
       <p className="font-display text-2xl lowercase">naym</p>
       <h1 className="font-display text-3xl leading-snug">
-        Your partner picked their favorites from {deckSize} names.
+        Your partner picked their favorites from {deckSize} {origin} names.
       </h1>
       <p className="text-base leading-relaxed text-ink-soft">
         Your turn. They can&apos;t see your answers, and you can&apos;t see

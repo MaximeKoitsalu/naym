@@ -39,7 +39,7 @@ async function inviteTokenFor(creatorToken: string): Promise<string> {
 
 describe("tokens and roles", () => {
   it("creator token resolves to role A, invite to role B, junk to null", async () => {
-    const { creatorToken } = await createSession();
+    const { creatorToken } = (await createSession())!;
     expect((await resolveToken(creatorToken))?.role).toBe("A");
     const invite = await inviteTokenFor(creatorToken);
     expect((await resolveToken(invite))?.role).toBe("B");
@@ -47,7 +47,7 @@ describe("tokens and roles", () => {
   });
 
   it("invite token is surfaced ONLY to A and ONLY after A completes", async () => {
-    const { creatorToken } = await createSession();
+    const { creatorToken } = (await createSession())!;
     let view = (await getStateView(creatorToken))!;
     expect(view.inviteToken).toBeNull(); // before completion: hidden
     const invite = await inviteTokenFor(creatorToken);
@@ -58,7 +58,7 @@ describe("tokens and roles", () => {
 
 describe("B slot binding (prefetch-safe)", () => {
   it("state GETs never bind; startB binds once and logs invite_opened once", async () => {
-    const { creatorToken, sessionId } = await createSession();
+    const { creatorToken, sessionId } = (await createSession())!;
     const invite = await inviteTokenFor(creatorToken);
     await getStateView(invite); // a prefetcher's GET
     let events = (await getStore().range("events:log")) as { event: string }[];
@@ -77,14 +77,14 @@ describe("B slot binding (prefetch-safe)", () => {
   });
 
   it("the creator token can never bind the B slot", async () => {
-    const { creatorToken } = await createSession();
+    const { creatorToken } = (await createSession())!;
     expect(await startB(creatorToken)).toBe(false);
   });
 });
 
 describe("the blindness boundary", () => {
   it("state view never contains the other partner's swipes, any stage", async () => {
-    const { creatorToken } = await createSession();
+    const { creatorToken } = (await createSession())!;
     const invite = await inviteTokenFor(creatorToken);
     await startB(invite);
     const bSwipes = await fullDeckSwipes(invite, (_, i) => i % 2 === 0);
@@ -100,7 +100,7 @@ describe("the blindness boundary", () => {
   });
 
   it("reveal returns the intersection only", async () => {
-    const { creatorToken } = await createSession();
+    const { creatorToken } = (await createSession())!;
     const aSwipes = await fullDeckSwipes(creatorToken, (id) =>
       ["astrid", "liv", "nils"].includes(id),
     );
@@ -119,7 +119,7 @@ describe("the blindness boundary", () => {
   });
 
   it("reveal refuses until both are complete", async () => {
-    const { creatorToken } = await createSession();
+    const { creatorToken } = (await createSession())!;
     await inviteTokenFor(creatorToken);
     expect(await getReveal(creatorToken)).toBeNull();
   });
@@ -127,7 +127,7 @@ describe("the blindness boundary", () => {
 
 describe("sync protocol", () => {
   it("monotonic guard holds through the API path: empty PUT cannot wipe", async () => {
-    const { creatorToken } = await createSession();
+    const { creatorToken } = (await createSession())!;
     const partial = (await fullDeckSwipes(creatorToken, () => true)).slice(0, 10);
     await putSwipes(creatorToken, partial);
     const wiped = await putSwipes(creatorToken, []); // webview with empty localStorage
@@ -135,7 +135,7 @@ describe("sync protocol", () => {
   });
 
   it("completion is derived and deck_completed fires exactly once", async () => {
-    const { creatorToken, sessionId } = await createSession();
+    const { creatorToken, sessionId } = (await createSession())!;
     const full = await fullDeckSwipes(creatorToken, () => false);
     await putSwipes(creatorToken, full.slice(0, 49));
     await putSwipes(creatorToken, full);
@@ -154,7 +154,7 @@ describe("sync protocol", () => {
 
 describe("round 2", () => {
   async function zeroMatchSession() {
-    const { creatorToken, sessionId } = await createSession();
+    const { creatorToken, sessionId } = (await createSession())!;
     const aSwipes = await fullDeckSwipes(creatorToken, (id) => id === "astrid");
     await putSwipes(creatorToken, aSwipes);
     const invite = (await getStateView(creatorToken))!.inviteToken!;
@@ -176,7 +176,7 @@ describe("round 2", () => {
   });
 
   it("cannot arm when matches exist", async () => {
-    const { creatorToken } = await createSession();
+    const { creatorToken } = (await createSession())!;
     const both = await fullDeckSwipes(creatorToken, (id) => id === "astrid");
     await putSwipes(creatorToken, both);
     const invite = (await getStateView(creatorToken))!.inviteToken!;
@@ -186,7 +186,7 @@ describe("round 2", () => {
   });
 
   it("cannot arm on an empty union — warm ending instead", async () => {
-    const { creatorToken } = await createSession();
+    const { creatorToken } = (await createSession())!;
     const none = await fullDeckSwipes(creatorToken, () => false);
     await putSwipes(creatorToken, none);
     const invite = (await getStateView(creatorToken))!.inviteToken!;
@@ -214,7 +214,7 @@ describe("round 2", () => {
 
 describe("events are durable", () => {
   it("kill-metric events live under a key with no TTL", async () => {
-    const { creatorToken, sessionId } = await createSession();
+    const { creatorToken, sessionId } = (await createSession())!;
     await putSwipes(creatorToken, (await fullDeckSwipes(creatorToken, () => true)).slice(0, 3));
     const events = (await getStore().range("events:log")) as { session: string }[];
     expect(events.filter((e) => e.session === sessionId).length).toBeGreaterThanOrEqual(2);
