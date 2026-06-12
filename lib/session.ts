@@ -1,5 +1,5 @@
 import { nanoid } from "nanoid";
-import { DEFAULT_DECK_ID, getDeckEntry } from "./decks";
+import { buildSessionDeck, DEFAULT_DECK_ID } from "./decks";
 import { getStore, SESSION_TTL_S } from "./store";
 import {
   buildRound2Deck,
@@ -41,10 +41,11 @@ export async function logEvent(
 }
 
 export async function createSession(
-  deckId: string = DEFAULT_DECK_ID,
+  deckIds: string | string[] = DEFAULT_DECK_ID,
 ): Promise<{ creatorToken: string; sessionId: string } | null> {
-  const entry = getDeckEntry(deckId);
-  if (!entry) return null; // unknown deck — route turns this into a 400
+  // One origin → that deck verbatim; several → an even 50-card blend.
+  const entry = buildSessionDeck(Array.isArray(deckIds) ? deckIds : [deckIds]);
+  if (!entry) return null; // unknown deck or empty pick — route turns this into a 400
   const store = getStore();
   const id = nanoid(12);
   const creatorToken = nanoid(21);
