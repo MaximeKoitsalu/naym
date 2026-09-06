@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 function fireHandoffMode(token: string, mode: "link" | "same-device") {
@@ -22,6 +22,7 @@ export default function Handoff({
   const [copied, setCopied] = useState(false);
   const [step, setStep] = useState<"sealed" | "interstitial">("sealed");
   const router = useRouter();
+  const readyTapped = useRef(false);
   const url =
     typeof window !== "undefined"
       ? `${window.location.origin}/s/${inviteToken}`
@@ -55,6 +56,9 @@ export default function Handoff({
   }
 
   function ready() {
+    // Guard against a rapid double-tap double-firing the event or navigation.
+    if (readyTapped.current) return;
+    readyTapped.current = true;
     fireHandoffMode(creatorToken, "same-device");
     // Both tokens' localStorage entries would otherwise share this one
     // browser — clear A's raw swipes so B can't read them via devtools,
