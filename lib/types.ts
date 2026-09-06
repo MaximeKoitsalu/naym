@@ -60,7 +60,8 @@ export type EventName =
   | "reveal_viewed"
   | "keepsake_saved"
   | "reveal_shared"
-  | "round2_armed";
+  | "round2_armed"
+  | "handoff_mode_selected";
 
 export type RevealPayload = {
   /** Mutual likes only — raw per-role arrays NEVER serialize off the server. */
