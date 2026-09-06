@@ -53,3 +53,17 @@ Fraunces (display) + Schibsted Grotesk (UI chrome); paper `#FAF7F2`, ink
 `#221F1A`, terracotta `#C26A4A`; 4px scale, 20px card radius, no decorative
 shadows. The full design spec (choreography beats, swipe physics contract,
 state table, a11y rules) lives in the plan of record.
+
+## Agent skills
+
+### Issue tracker
+
+Issues tracked as GitHub Issues in MaximeKoitsalu/naym via the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default five-role vocabulary (needs-triage, needs-info, ready-for-agent, ready-for-human, wontfix), used as-is. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: root `CONTEXT.md` + `docs/adr/`. See `docs/agents/domain.md`.
