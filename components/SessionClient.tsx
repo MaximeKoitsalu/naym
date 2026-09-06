@@ -162,7 +162,7 @@ export default function SessionClient({ token }: { token: string }) {
 
   // ---- A done, B not: handoff (until B starts), then waiting ----
   if (view.role === "A" && view.inviteToken && !view.bStarted) {
-    return <Handoff inviteToken={view.inviteToken} />;
+    return <Handoff inviteToken={view.inviteToken} creatorToken={token} />;
   }
   return <Waiting />;
 }
