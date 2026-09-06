@@ -54,8 +54,11 @@ test("same-device ritual: single context, localStorage cleared, no back-nav to A
     }
   });
 
-  // Partner A: create session, swipe, reach the handoff.
+  // Partner A: create session, swipe, reach the handoff. This test hardcodes
+  // specific names below, so it needs the full deterministic 50-card deck —
+  // the default is a shuffled 20-card subset that might not include them.
   await page.goto("/");
+  await page.getByRole("button", { name: "50", exact: true }).click();
   await page.getByRole("button", { name: "Start swiping" }).click();
   await page.waitForURL(/\/s\/.+/);
   const creatorToken = new URL(page.url()).pathname.split("/").pop()!;

@@ -5,6 +5,7 @@ import german from "@/data/decks/german.json";
 import italian from "@/data/decks/italian.json";
 import french from "@/data/decks/french.json";
 import type { NameCard } from "./types";
+import { DEFAULT_DECK_SIZE, MAX_DECK_SIZE, MIN_DECK_SIZE } from "./deck-manifest";
 
 /*
   Deck registry (server-side — full deck data).
@@ -37,7 +38,6 @@ const REGISTRY = new Map<string, DeckEntry>(
 );
 
 export const DEFAULT_DECK_ID = "nordic-v1";
-export const SESSION_DECK_SIZE = 50;
 
 export function getDeckEntry(deckId: string): DeckEntry | null {
   return REGISTRY.get(deckId) ?? null;
@@ -47,17 +47,25 @@ export function allDeckIds(): string[] {
   return [...REGISTRY.keys()];
 }
 
+/** Clamp a requested deck size into [MIN_DECK_SIZE, MAX_DECK_SIZE], defaulting garbage input. */
+function clampSize(size: number): number {
+  if (!Number.isFinite(size)) return DEFAULT_DECK_SIZE;
+  return Math.min(MAX_DECK_SIZE, Math.max(MIN_DECK_SIZE, Math.round(size)));
+}
+
 /**
- * Build the deck a session will pin. One origin → that deck verbatim.
- * Several origins → a BLEND: an even stratified sample of 50 across the
+ * Build the deck a session will pin. One origin → that deck verbatim when
+ * `size` is the full MAX_DECK_SIZE, otherwise a shuffled subset of it.
+ * Several origins → a BLEND: an even stratified sample of `size` across the
  * chosen decks (floor split, remainder to the earliest picks), shuffled,
  * deduped by id. The finite-deck premise survives — both partners still
- * swipe the same 50 cards, whatever the mix.
+ * swipe the same cards, whatever the mix or size.
  *
  * `rand` is injectable for deterministic tests.
  */
 export function buildSessionDeck(
   deckIds: string[],
+  size: number = DEFAULT_DECK_SIZE,
   rand: () => number = Math.random,
 ): DeckEntry | null {
   const unique = [...new Set(deckIds)];
@@ -65,11 +73,16 @@ export function buildSessionDeck(
   const entries = unique.map((id) => getDeckEntry(id));
   if (entries.some((e) => e === null)) return null;
   const decks = entries as DeckEntry[];
+  const target = clampSize(size);
 
-  if (decks.length === 1) return decks[0];
+  if (decks.length === 1) {
+    const deck = decks[0];
+    if (target >= deck.names.length) return deck; // full deck — verbatim, unshuffled
+    return { ...deck, names: shuffle(deck.names, rand).slice(0, target) };
+  }
 
-  const per = Math.floor(SESSION_DECK_SIZE / decks.length);
-  const remainder = SESSION_DECK_SIZE - per * decks.length;
+  const per = Math.floor(target / decks.length);
+  const remainder = target - per * decks.length;
   const seen = new Set<string>();
   const picked: NameCard[] = [];
   decks.forEach((deck, i) => {

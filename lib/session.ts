@@ -42,9 +42,10 @@ export async function logEvent(
 
 export async function createSession(
   deckIds: string | string[] = DEFAULT_DECK_ID,
+  size?: number,
 ): Promise<{ creatorToken: string; sessionId: string } | null> {
-  // One origin → that deck verbatim; several → an even 50-card blend.
-  const entry = buildSessionDeck(Array.isArray(deckIds) ? deckIds : [deckIds]);
+  // One origin → that deck verbatim (at max size); several → an even blend.
+  const entry = buildSessionDeck(Array.isArray(deckIds) ? deckIds : [deckIds], size);
   if (!entry) return null; // unknown deck or empty pick — route turns this into a 400
   const store = getStore();
   const id = nanoid(12);

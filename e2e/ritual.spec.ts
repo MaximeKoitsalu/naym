@@ -61,8 +61,11 @@ test("full ritual: A swipes → handoff → B swipes blind → both reveals matc
     }
   });
 
-  // Partner A: create session, swipe, reach the handoff.
+  // Partner A: create session, swipe, reach the handoff. This test hardcodes
+  // specific names below, so it needs the full deterministic 50-card deck —
+  // the default is a shuffled 20-card subset that might not include them.
   await a.page.goto("/");
+  await a.page.getByRole("button", { name: "50", exact: true }).click();
   await a.page.getByRole("button", { name: "Start swiping" }).click();
   await a.page.waitForURL(/\/s\/.+/);
   await swipeWholeDeck(a.page, (n) => aLikes.has(n));
@@ -118,6 +121,9 @@ test("resume: killing the tab mid-deck resumes at the same card", async ({ brows
   test.setTimeout(120_000);
   const a = await newPartnerPage(browser);
   await a.page.goto("/");
+  // This test asserts an exact "8 / 50" progress label, so it needs the
+  // full deck rather than the default 20-card subset.
+  await a.page.getByRole("button", { name: "50", exact: true }).click();
   await a.page.getByRole("button", { name: "Start swiping" }).click();
   await a.page.waitForURL(/\/s\/.+/);
   const url = a.page.url();

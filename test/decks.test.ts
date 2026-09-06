@@ -4,8 +4,12 @@ import {
   buildSessionDeck,
   getDeckEntry,
   DEFAULT_DECK_ID,
-  SESSION_DECK_SIZE,
 } from "@/lib/decks";
+import {
+  DEFAULT_DECK_SIZE,
+  MAX_DECK_SIZE,
+  MIN_DECK_SIZE,
+} from "@/lib/deck-manifest";
 import { createSession, getStateView } from "@/lib/session";
 
 // Deterministic "random" for shuffle-bearing tests.
@@ -54,29 +58,34 @@ describe("deck registry", () => {
 });
 
 describe("deck blending", () => {
-  it("a single origin returns that deck verbatim", () => {
-    const single = buildSessionDeck(["greek-v1"])!;
+  it("a single origin at max size returns that deck verbatim, unshuffled", () => {
+    const single = buildSessionDeck(["greek-v1"], MAX_DECK_SIZE)!;
     expect(single.deckId).toBe("greek-v1");
     expect(single.names).toEqual(getDeckEntry("greek-v1")!.names);
   });
 
   it("two origins blend to 50 cards, 25 from each, shuffled together", () => {
-    const blend = buildSessionDeck(["nordic-v1", "greek-v1"], seq(0.3, 0.7, 0.1, 0.9, 0.5))!;
-    expect(blend.names).toHaveLength(SESSION_DECK_SIZE);
+    const blend = buildSessionDeck(
+      ["nordic-v1", "greek-v1"],
+      MAX_DECK_SIZE,
+      seq(0.3, 0.7, 0.1, 0.9, 0.5),
+    )!;
+    expect(blend.names).toHaveLength(MAX_DECK_SIZE);
     const nordicIds = new Set(getDeckEntry("nordic-v1")!.names.map((n) => n.id));
     const fromNordic = blend.names.filter((n) => nordicIds.has(n.id)).length;
     expect(fromNordic).toBe(25);
     expect(blend.deckId).toBe("nordic-v1+greek-v1");
     expect(blend.title).toBe("nordic × greek deck");
-    expect(new Set(blend.names.map((n) => n.id)).size).toBe(SESSION_DECK_SIZE);
+    expect(new Set(blend.names.map((n) => n.id)).size).toBe(MAX_DECK_SIZE);
   });
 
   it("three origins split 17/17/16, earliest picks get the remainder", () => {
     const blend = buildSessionDeck(
       ["nordic-v1", "italian-v1", "french-v1"],
+      MAX_DECK_SIZE,
       seq(0.2, 0.8, 0.4, 0.6),
     )!;
-    expect(blend.names).toHaveLength(SESSION_DECK_SIZE);
+    expect(blend.names).toHaveLength(MAX_DECK_SIZE);
     const count = (deckId: string) => {
       const ids = new Set(getDeckEntry(deckId)!.names.map((n) => n.id));
       return blend.names.filter((n) => ids.has(n.id)).length;
@@ -87,8 +96,8 @@ describe("deck blending", () => {
   });
 
   it("all five origins blend evenly to 50", () => {
-    const blend = buildSessionDeck(allDeckIds(), seq(0.5, 0.25, 0.75))!;
-    expect(blend.names).toHaveLength(SESSION_DECK_SIZE);
+    const blend = buildSessionDeck(allDeckIds(), MAX_DECK_SIZE, seq(0.5, 0.25, 0.75))!;
+    expect(blend.names).toHaveLength(MAX_DECK_SIZE);
   });
 
   it("duplicate picks collapse; unknown ids and empty picks reject", () => {
@@ -96,6 +105,42 @@ describe("deck blending", () => {
     expect(dup.deckId).toBe("nordic-v1"); // de-duped to a single origin
     expect(buildSessionDeck(["nordic-v1", "klingon-v1"])).toBeNull();
     expect(buildSessionDeck([])).toBeNull();
+  });
+});
+
+describe("deck size", () => {
+  it("defaults to DEFAULT_DECK_SIZE when omitted", () => {
+    const deck = buildSessionDeck(["greek-v1"])!;
+    expect(deck.names).toHaveLength(DEFAULT_DECK_SIZE);
+  });
+
+  it("a single origin below max size is a shuffled, deduped subset of that deck", () => {
+    const deck = buildSessionDeck(["greek-v1"], 20)!;
+    expect(deck.names).toHaveLength(20);
+    const greekIds = new Set(getDeckEntry("greek-v1")!.names.map((n) => n.id));
+    expect(deck.names.every((n) => greekIds.has(n.id))).toBe(true);
+    expect(new Set(deck.names.map((n) => n.id)).size).toBe(20);
+  });
+
+  it("a blend at a non-max size still splits evenly", () => {
+    const deck = buildSessionDeck(["nordic-v1", "greek-v1"], 20, seq(0.3, 0.7, 0.1, 0.9, 0.5))!;
+    expect(deck.names).toHaveLength(20);
+    const nordicIds = new Set(getDeckEntry("nordic-v1")!.names.map((n) => n.id));
+    expect(deck.names.filter((n) => nordicIds.has(n.id))).toHaveLength(10);
+  });
+
+  it("clamps below the min up to MIN_DECK_SIZE", () => {
+    const deck = buildSessionDeck(["greek-v1"], 1)!;
+    expect(deck.names).toHaveLength(MIN_DECK_SIZE);
+  });
+
+  it("clamps above the max down to MAX_DECK_SIZE, verbatim", () => {
+    const deck = buildSessionDeck(["greek-v1"], 999)!;
+    expect(deck.names).toEqual(getDeckEntry("greek-v1")!.names);
+  });
+
+  it("clamps a non-finite/garbage size to the default", () => {
+    expect(buildSessionDeck(["greek-v1"], NaN)!.names).toHaveLength(DEFAULT_DECK_SIZE);
   });
 });
 
@@ -107,11 +152,11 @@ describe("session deck selection", () => {
   });
 
   it("pins the chosen deck for both partners", async () => {
-    const s = (await createSession("greek-v1"))!;
+    const s = (await createSession("greek-v1", MAX_DECK_SIZE))!;
     const view = (await getStateView(s.creatorToken))!;
     expect(view.deckTitle).toBe("greek deck");
     expect(view.deck.map((c) => c.id)).toContain("penelope");
-    expect(view.deck).toHaveLength(50);
+    expect(view.deck).toHaveLength(MAX_DECK_SIZE);
   });
 
   it("rejects unknown deck ids", async () => {
@@ -119,13 +164,25 @@ describe("session deck selection", () => {
   });
 
   it("pins a blended deck for both partners with a blend title", async () => {
-    const s = (await createSession(["german-v1", "french-v1"]))!;
+    const s = (await createSession(["german-v1", "french-v1"], MAX_DECK_SIZE))!;
     const view = (await getStateView(s.creatorToken))!;
     expect(view.deckTitle).toBe("german × french deck");
-    expect(view.deck).toHaveLength(50);
+    expect(view.deck).toHaveLength(MAX_DECK_SIZE);
   });
 
   it("default deck id is a registered deck", () => {
     expect(getDeckEntry(DEFAULT_DECK_ID)).not.toBeNull();
+  });
+
+  it("defaults to DEFAULT_DECK_SIZE when size is omitted", async () => {
+    const s = (await createSession())!;
+    const view = (await getStateView(s.creatorToken))!;
+    expect(view.deck).toHaveLength(DEFAULT_DECK_SIZE);
+  });
+
+  it("pins a custom size chosen at creation", async () => {
+    const s = (await createSession("greek-v1", 35))!;
+    const view = (await getStateView(s.creatorToken))!;
+    expect(view.deck).toHaveLength(35);
   });
 });
