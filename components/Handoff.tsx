@@ -3,6 +3,20 @@
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
+/*
+  Handoff.tsx (A reaches here once ownDone === true)
+
+    [sealed] ──"Send to your partner"──► share/copy URL ──► fire handoff_mode_selected(link)
+       │                                                      (existing path, unchanged behavior)
+       │
+       └──"Continue on this phone"──► [interstitial: "hand the phone over"]
+                                            │
+                                            ├──"I'm ready" (B)──► fire handoff_mode_selected(same-device)
+                                            │                      └─► clear A's localStorage, router.replace(/s/{inviteToken})
+                                            │
+                                            └──back──► [sealed]  (no event, no navigation)
+*/
+
 function fireHandoffMode(token: string, mode: "link" | "same-device") {
   // Fire-and-forget — must not block navigation or the share/copy action.
   fetch("/api/event", {
