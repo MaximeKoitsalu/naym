@@ -10,6 +10,10 @@ export type Swipe = { id: string; liked: boolean };
 
 export type Role = "A" | "B";
 
+/** How a couple moved from A's sealed deck to B's — logged via handoff_mode_selected. */
+export const HANDOFF_MODES = ["link", "same-device"] as const;
+export type HandoffMode = (typeof HANDOFF_MODES)[number];
+
 /*
   Session state machine (see design doc):
 

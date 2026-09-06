@@ -2,6 +2,8 @@
 
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import type { HandoffMode } from "@/lib/types";
+import { swipesLocalKey } from "@/lib/local-swipes";
 
 /*
   Handoff.tsx (A reaches here once ownDone === true)
@@ -17,7 +19,7 @@ import { useRouter } from "next/navigation";
                                             └──back──► [sealed]  (no event, no navigation)
 */
 
-function fireHandoffMode(token: string, mode: "link" | "same-device") {
+function fireHandoffMode(token: string, mode: HandoffMode) {
   // Fire-and-forget — must not block navigation or the share/copy action.
   fetch("/api/event", {
     method: "POST",
@@ -78,7 +80,7 @@ export default function Handoff({
     // browser — clear A's raw swipes so B can't read them via devtools,
     // and replace (not push) so A's token URL isn't left in back-history.
     try {
-      localStorage.removeItem(`naym:swipes:${creatorToken}:r1`);
+      localStorage.removeItem(swipesLocalKey(creatorToken, 1));
     } catch {}
     router.replace(`/s/${inviteToken}`);
   }

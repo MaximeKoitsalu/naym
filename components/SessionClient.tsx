@@ -8,6 +8,7 @@ import Handoff from "./Handoff";
 import Waiting from "./Waiting";
 import Reveal from "./Reveal";
 import { ExpiredScreen, LoadingScreen } from "./Screens";
+import { swipesLocalKey } from "@/lib/local-swipes";
 
 type StateView = {
   role: "A" | "B";
@@ -27,11 +28,9 @@ type StateView = {
   } | null;
 };
 
-const localKey = (token: string, round: 1 | 2) => `naym:swipes:${token}:r${round}`;
-
 function readLocal(token: string, round: 1 | 2): Swipe[] {
   try {
-    const raw = localStorage.getItem(localKey(token, round));
+    const raw = localStorage.getItem(swipesLocalKey(token, round));
     return raw ? (JSON.parse(raw) as Swipe[]) : [];
   } catch {
     return [];
@@ -82,7 +81,7 @@ export default function SessionClient({ token }: { token: string }) {
   const syncSwipes = useCallback(
     async (swipes: Swipe[], round: 1 | 2, awaitIt = false) => {
       try {
-        localStorage.setItem(localKey(token, round), JSON.stringify(swipes));
+        localStorage.setItem(swipesLocalKey(token, round), JSON.stringify(swipes));
       } catch {
         /* private mode — server still gets the array */
       }

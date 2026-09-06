@@ -10,6 +10,7 @@ import {
   useTransform,
 } from "motion/react";
 import type { NameCard, Swipe } from "@/lib/types";
+import { swipesLocalKey } from "@/lib/local-swipes";
 
 /*
   Swipe physics contract (design review D14, starting values — tune on device):
@@ -91,7 +92,7 @@ export default function SwipeDeck({
     // remotely until forward progress resumes — local state leads, by design.
     try {
       localStorage.setItem(
-        `naym:swipes:${location.pathname.split("/").pop()}:r${round}`,
+        swipesLocalKey(location.pathname.split("/").pop()!, round),
         JSON.stringify(prev),
       );
     } catch {}
