@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 
 function fireHandoffMode(token: string, mode: "link" | "same-device") {
   // Fire-and-forget — must not block navigation or the share/copy action.
@@ -20,6 +21,7 @@ export default function Handoff({
 }) {
   const [copied, setCopied] = useState(false);
   const [step, setStep] = useState<"sealed" | "interstitial">("sealed");
+  const router = useRouter();
   const url =
     typeof window !== "undefined"
       ? `${window.location.origin}/s/${inviteToken}`
@@ -54,6 +56,13 @@ export default function Handoff({
 
   function ready() {
     fireHandoffMode(creatorToken, "same-device");
+    // Both tokens' localStorage entries would otherwise share this one
+    // browser — clear A's raw swipes so B can't read them via devtools,
+    // and replace (not push) so A's token URL isn't left in back-history.
+    try {
+      localStorage.removeItem(`naym:swipes:${creatorToken}:r1`);
+    } catch {}
+    router.replace(`/s/${inviteToken}`);
   }
 
   if (step === "interstitial") {
