@@ -9,6 +9,7 @@ import {
   startB,
 } from "@/lib/session";
 import { getStore } from "@/lib/store";
+import { MAX_DECK_SIZE } from "@/lib/deck-manifest";
 import type { Swipe } from "@/lib/types";
 
 /*
@@ -100,7 +101,8 @@ describe("the blindness boundary", () => {
   });
 
   it("reveal returns the intersection only", async () => {
-    const { creatorToken } = (await createSession())!;
+    // Full deck: this test relies on specific named ids being present.
+    const { creatorToken } = (await createSession(undefined, MAX_DECK_SIZE))!;
     const aSwipes = await fullDeckSwipes(creatorToken, (id) =>
       ["astrid", "liv", "nils"].includes(id),
     );
@@ -154,7 +156,8 @@ describe("sync protocol", () => {
 
 describe("round 2", () => {
   async function zeroMatchSession() {
-    const { creatorToken, sessionId } = (await createSession())!;
+    // Full deck: relies on specific named ids being present.
+    const { creatorToken, sessionId } = (await createSession(undefined, MAX_DECK_SIZE))!;
     const aSwipes = await fullDeckSwipes(creatorToken, (id) => id === "astrid");
     await putSwipes(creatorToken, aSwipes);
     const invite = (await getStateView(creatorToken))!.inviteToken!;
@@ -176,7 +179,8 @@ describe("round 2", () => {
   });
 
   it("cannot arm when matches exist", async () => {
-    const { creatorToken } = (await createSession())!;
+    // Full deck: relies on the "astrid" id being present.
+    const { creatorToken } = (await createSession(undefined, MAX_DECK_SIZE))!;
     const both = await fullDeckSwipes(creatorToken, (id) => id === "astrid");
     await putSwipes(creatorToken, both);
     const invite = (await getStateView(creatorToken))!.inviteToken!;

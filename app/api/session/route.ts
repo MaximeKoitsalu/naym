@@ -9,7 +9,8 @@ export async function POST(req: NextRequest) {
     : typeof body?.deckId === "string"
       ? body.deckId
       : undefined;
-  const session = await createSession(deckIds);
+  const size = typeof body?.size === "number" ? body.size : undefined;
+  const session = await createSession(deckIds, size);
   if (!session) return NextResponse.json({ error: "unknown deck" }, { status: 400 });
   return NextResponse.json({ creatorToken: session.creatorToken });
 }

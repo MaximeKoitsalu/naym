@@ -2,12 +2,18 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { DECK_MANIFEST, type DeckChoice } from "@/lib/deck-manifest";
+import {
+  DECK_MANIFEST,
+  DECK_SIZE_PRESETS,
+  DEFAULT_DECK_SIZE,
+  type DeckChoice,
+} from "@/lib/deck-manifest";
 
 export default function Landing() {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [picked, setPicked] = useState<DeckChoice[]>(["nordic-v1"]);
+  const [size, setSize] = useState<number>(DEFAULT_DECK_SIZE);
 
   function toggle(id: DeckChoice) {
     setPicked((prev) =>
@@ -22,7 +28,7 @@ export default function Landing() {
       const res = await fetch("/api/session", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ deckIds: picked }),
+        body: JSON.stringify({ deckIds: picked, size }),
       });
       const { creatorToken } = await res.json();
       localStorage.setItem(`naym:role:${creatorToken}`, "A");
@@ -43,13 +49,13 @@ export default function Landing() {
           without saying one out loud.
         </h2>
         <p className="text-base leading-relaxed text-ink-soft">
-          Swipe 50 names in secret. Send your partner one link. Neither of you
-          sees anything until you&apos;ve both finished — then one reveal shows
-          only the names you both chose.
+          Swipe {size} names in secret. Send your partner one link. Neither of
+          you sees anything until you&apos;ve both finished — then one reveal
+          shows only the names you both chose.
         </p>
       </div>
 
-      {/* Origin picker — pick one deck, or mix a few into one 50-card blend. */}
+      {/* Origin picker — pick one deck, or mix a few into one blended deck. */}
       <fieldset className="flex flex-col gap-2.5">
         <legend className="pb-1 text-sm text-ink-soft">
           pick your decks — one, or mix a few
@@ -79,11 +85,35 @@ export default function Landing() {
         })}
         <p className="min-h-5 text-sm text-ink-soft" aria-live="polite">
           {picked.length > 1
-            ? `one deck, 50 names — dealt evenly across ${picked.length} origins`
+            ? `one deck, ${size} names — dealt evenly across ${picked.length} origins`
             : picked.length === 0
               ? "pick at least one deck"
               : ""}
         </p>
+      </fieldset>
+
+      <fieldset className="flex flex-col gap-2.5">
+        <legend className="pb-1 text-sm text-ink-soft">how many names</legend>
+        <div className="flex gap-2">
+          {DECK_SIZE_PRESETS.map((n) => {
+            const active = n === size;
+            return (
+              <button
+                key={n}
+                type="button"
+                onClick={() => setSize(n)}
+                aria-pressed={active}
+                className={`min-h-12 flex-1 rounded-2xl border font-display text-lg transition-colors ${
+                  active
+                    ? "border-terra bg-paper-dim text-terra-deep"
+                    : "border-ink-soft/25"
+                }`}
+              >
+                {n}
+              </button>
+            );
+          })}
+        </div>
       </fieldset>
 
       <button
