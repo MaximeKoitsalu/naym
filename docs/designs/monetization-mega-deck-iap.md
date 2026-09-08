@@ -58,16 +58,65 @@ Zero risk, immediate ship, tests real demand before spending effort on purchase 
 - Does the free deck-size cap stay at today's `MAX_DECK_SIZE = 50`, or drop (e.g. to 35) so that the blended mega deck (this doc provisionally uses 100 — the exact target is still open) becomes the paid tier? A product call, not a code call — needs deciding before `lib/deck-manifest.ts` changes.
 - **Price point.** The Problem Statement anchored on "~$1/€1" for a flat price, but once the doc pivots to IAP, no price is attached to the mega-deck unlock specifically. Still open, alongside the deck-size ceiling above.
 - **What happens if the other partner's browser sees the unlock offer, not the buyer's?** (Promoted from Cross-Model Perspective — unresolved.) Naym's whole model is two tokens, two browsers; a purchase made on A's device needs to unlock the *session*, not just that one browser, or B never sees the bigger deck A paid for. Needs a real answer before any purchase UI is designed.
-- **Consumable vs. non-consumable, and what "persistence" actually costs.** A non-consumable purchase's persistence doesn't require naym to invent its own login/accounts system — native store billing already tracks entitlement per platform account (StoreKit 2's `Transaction.currentEntitlements`, Play Billing's `queryPurchasesAsync`), so the app can just ask the store "does this device/account own this?" on launch. The real, smaller cost the review correctly flagged: naym's session model (`lib/session.ts`) has no concept of "device" or "install" today, only anonymous 30-day-TTL session tokens — some plumbing is needed to check that native entitlement at the right point in the flow (before a deck is created) and connect it to a fresh session. Moderate work, not a new architecture, but real and unscoped today.
+- **Consumable vs. non-consumable, and what "persistence" actually costs.** **Correction from the outside-voice review**: "just ask the store" (StoreKit 2's `Transaction.currentEntitlements`, Play Billing's `queryPurchasesAsync`) only answers the same-device case — where both partners share one phone and one app install. In the **link flow** — two separate devices, potentially two platforms (A on iPhone, B on Android) — a purchase made on A's device has no channel to unlock B's device except through naym's own server; native store entitlement checks can't see across devices at all. That means naym needs its own **session-keyed entitlement record on the backend regardless of RevenueCat** — not an optional nice-to-have, but required for the link flow specifically. RevenueCat still helps (it hosts the receipt-validation/webhook side that would write that record), but the session-keyed storage and lookup is 100% naym-specific work, unscoped today. Same-device sessions could theoretically skip this via pure on-device entitlement checks, but building two different persistence paths for one feature is its own complexity cost — worth deciding whether to just always go through the server-side record for consistency.
 - **What happens to the free web app** (`naym.vercel.app`) once the mega-deck exists only as native IAP? Working assumption: the web app keeps its current free experience unchanged (capped at `MAX_DECK_SIZE`); the paid tier is native-app-only for now. This is a deliberate asymmetry, not an oversight — revisit if that feels wrong once the native app actually exists.
 - No timeline exists yet for the Capacitor wrap itself — this document doesn't create one. It does make explicit that this project is now the literal critical path to any naym revenue, not merely a "nice to have" for app-store discovery as originally framed. See Success Criteria — this is now a hard prerequisite, not an aside.
+- **Round-2 friction risk** (caught by the outside-voice review). The paid offer only appears after *both* partners finish the free ritual — meaning buying it means re-establishing a two-person session for round 2. On the link flow, that's exactly the "two devices, send a link" coordination ceremony `docs/designs/same-device-pairing-and-app-stores.md` spent a whole design cycle removing for round 1. The paid feature may inherit the same friction naym just paid engineering cost to eliminate elsewhere — worth checking once same-device mode's round-2 behavior is examined, not assumed away.
+- **Sequencing gap** (caught by the outside-voice review). Neither this doc nor the sibling one says whether IAP ships in the *same* first App Store submission as the base Capacitor wrap, or as a later update. A later-update path means a second full review cycle with its own 4.2.3-adjacent scrutiny (a native app that later adds a purchase is exactly the kind of change Apple re-reviews closely) — unbudgeted in either document's timeline thinking.
+
+## Purchase Flow (data flow, once built)
+
+```
+                    ┌─────────────────────┐
+                    │  Post-reveal screen  │
+                    │  "go again, bigger?" │
+                    └──────────┬──────────┘
+                               │ buyer taps
+                               ▼
+                    ┌─────────────────────┐
+                    │  RevenueCat purchase │
+                    │  (StoreKit/Play      │
+                    │   Billing)           │
+                    └──────────┬──────────┘
+                               │ receipt validated
+                               ▼
+              ┌────────────────────────────────┐
+              │  naym backend: entitlement      │
+              │  write, keyed to THIS session    │
+              │  (lib/store.ts — new key)        │
+              └────────────────┬────────────────┘
+                                │
+              ┌─────────────────┴─────────────────┐
+              │                                     │
+   same-device session                    link-flow session (2 devices)
+   (buyer IS both roles'                   (buyer is ONE partner's device)
+    only device)                                    │
+              │                                     │
+   entitlement visible                    entitlement must be fetched by
+   locally — low risk of                  the OTHER partner's device from
+   the gap below                          naym's server, not the store
+                                                     │
+                                          ⚠ gap this review surfaced:
+                                          no native store API can do this
+                                          hop — session-keyed backend record
+                                          is required, not optional, here
+              │                                     │
+              └─────────────────┬─────────────────┘
+                                ▼
+                    ┌─────────────────────┐
+                    │  buildSessionDeck    │
+                    │  called with raised   │
+                    │  paid-tier ceiling    │
+                    └─────────────────────┘
+```
 
 ## Success Criteria
 
 - **Hard prerequisite, not an aside**: the Capacitor app-store wrap gets an owner and a timeline. Under the chosen approach, this feature — and all naym revenue — is completely blocked until that happens; this document does not create that timeline, it only makes the dependency explicit.
-- The native shell integrates a purchase bridge (e.g. RevenueCat, or a Capacitor/Cordova IAP plugin) for StoreKit/Play Billing — this is a real prerequisite tool decision, not implicit in "wrap the app."
+- The native shell integrates **RevenueCat** as the purchase bridge for StoreKit/Play Billing. Recommended (checked against current 2026 guidance) specifically because naym targets *both* iOS and Android and wants to avoid building custom server-side receipt validation — RevenueCat's official Capacitor SDK hosts entitlement tracking and receipt verification for you, directly answering the App Store Server Notifications / Play Developer API integration work this doc would otherwise leave unscoped. A native-only plugin (e.g. `@capgo/native-purchases`) is the leaner alternative, but only makes sense single-platform or with real bandwidth to maintain custom entitlement logic — neither applies here.
 - Once the shell and purchase bridge exist, the "go again, bigger" post-reveal offer ships as a new UI state (reusing the post-reveal CTA *pattern* round 2 established, not its deck-building code — see "What Makes This Cool" above), without touching the free ritual, the blindness boundary, or any existing test.
 - The product decisions made in this session (post-reveal moment not a landing-page paywall; a blended cross-origin deck not new curated content; mega-deck-size as the specific unlock) carry forward without needing to be re-litigated when that work actually starts.
+- **Business-outcome criterion** (added per outside-voice review — the criteria above measure whether the mechanism got built, not whether it worked). Define and track an actual conversion/revenue target once the feature ships (e.g. X% of completed rituals result in a purchase, or revenue within N months exceeds the RevenueCat + App Store Connect setup cost). Without this, "shipped" and "worked" get conflated — the Problem Statement's actual goal was "make some money," and this is the only criterion that answers whether that happened.
 
 ## Next Steps
 
@@ -77,8 +126,51 @@ Zero risk, immediate ship, tests real demand before spending effort on purchase 
 4. Decide restore-purchase and refund handling — required by both stores for non-consumable IAP, not optional polish — as part of that same setup pass.
 5. Build the post-reveal "go again, bigger" UI state (in `components/Reveal.tsx` / `lib/session.ts`, alongside but not reusing the existing round-2 deck-building code) once the native shell and purchase bridge exist.
 
+## Implementation Tasks
+Synthesized from this review's findings. All blocked on the Capacitor wrap (T1) starting — run with Claude Code or Codex once unblocked; checkbox as you ship.
+
+- [ ] **T1 (P1, human: unowned/no estimate / CC: n/a)** — capacitor-wrap — Get the Capacitor app-store wrap an owner and a timeline
+  - Surfaced by: Success Criteria — "Hard prerequisite, not an aside"; blocks every other task below
+  - Files: none yet (separate project, prior design doc's Next Steps #3-6)
+  - Verify: a debug build runs on a real device end-to-end (per sibling doc)
+- [ ] **T2 (P2, human: ~1-2h / CC: ~15min)** — product-decisions — Resolve price point, deck-size ceiling, consumable vs. non-consumable, and IAP submission sequencing (same release as T1 or a later update)
+  - Surfaced by: Open Questions — price point, deck-size ceiling, sequencing gap
+  - Files: none (product decisions, not code)
+  - Verify: each question has an explicit answer recorded before App Store Connect / Play Console setup begins
+- [ ] **T3 (P2, human: ~1-2 days / CC: ~2-3h)** — entitlement-backend — Build a session-keyed entitlement record in `lib/store.ts`, required for the link-flow purchase-attribution gap (native store checks alone don't cover it)
+  - Surfaced by: Open Question — consumable/non-consumable persistence, link-flow gap caught by outside-voice review
+  - Files: `lib/store.ts`, `lib/session.ts`
+  - Verify: a purchase made on partner A's device is visible to partner B's device on a different platform
+- [ ] **T4 (P2, human: ~1 day / CC: ~2-3h)** — purchase-bridge — Integrate RevenueCat's Capacitor SDK into the native shell
+  - Surfaced by: Success Criteria — purchase bridge recommendation
+  - Files: native shell project (not yet created)
+  - Verify: a real StoreKit/Play Billing test purchase completes and RevenueCat reports the entitlement
+- [ ] **T5 (P2, human: ~1 day / CC: ~2-3h)** — post-reveal-ui — Build the "go again, bigger" post-reveal UI state
+  - Surfaced by: What Makes This Cool; Cross-Model Perspective
+  - Files: `components/Reveal.tsx`, `lib/session.ts`, `lib/decks.ts` (new paid-tier size ceiling)
+  - Verify: both partners can complete a purchased mega-deck round without touching the free ritual or any existing test
+- [ ] **T6 (P3, human: ~2-4h / CC: ~30min)** — round2-friction-check — Verify the paid offer's own coordination friction (re-establishing a two-person session for round 2) against same-device mode before shipping
+  - Surfaced by: Open Question — round-2 friction risk (outside-voice review)
+  - Files: `components/Reveal.tsx`, `components/Handoff.tsx`
+  - Verify: a link-flow couple can complete the paid round without the ceremony same-device mode was built to avoid, or the doc explicitly accepts that tradeoff
+
 ## What I noticed about how you think
 
 - You corrected course mid-project: the earlier, non-interactive session's "defer monetization" recommendation didn't sit right, and you came back and said so directly — "I want to release the app, and somehow make some money on it" — rather than letting a prior AI-generated recommendation stand by default.
 - When I corrected the App-Store/IAP misconception, you didn't take the easier path it opened up (Approach A, ship today) — you re-affirmed Approach B anyway. That told me "release" has a specific meaning for you (the app stores), not just "revenue as fast as possible" — worth naming as a real, informed priority rather than something I talked you out of.
 - Given four concrete feature ideas, you picked the one needing the least new design work over the one arguably closer to the product's own shareable-ritual identity (the keepsake export). That's a builder optimizing to ship, not to build the "purest" idea — a legitimate way to operate, and worth being explicit about since it shapes what "done" looks like here.
+
+## GSTACK REVIEW REPORT
+
+| Review | Trigger | Why | Runs | Status | Findings |
+|--------|---------|-----|------|--------|----------|
+| CEO Review | `/plan-ceo-review` | Scope & strategy | 0 | — | not run |
+| Codex Review | `/codex review` | Independent 2nd opinion | 0 | — | not run |
+| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 1 | CLEAR | 9 issues, 0 critical gaps, all resolved |
+| Design Review | `/plan-design-review` | UI/UX gaps | 0 | — | not run |
+| DX Review | `/plan-devex-review` | Developer experience gaps | 0 | — | not run |
+
+**CROSS-MODEL:** Outside voice (Claude subagent — Codex not installed) challenged the Approach B decision itself (stacked risk vs. an unvalidated revenue feature) and caught 4 substantive gaps the multi-section review missed, most importantly that the link-flow purchase-attribution problem requires a naym-owned backend entitlement record regardless of purchase bridge choice — native store entitlement checks only cover same-device sessions. All 4 gaps fixed in-doc; the strategic challenge to Approach B was presented and the founder reconfirmed the existing decision.
+**VERDICT:** ENG CLEARED — ready to implement once the Capacitor wrap (T1) is unblocked; no code lands before then.
+
+NO UNRESOLVED DECISIONS
