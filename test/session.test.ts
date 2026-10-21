@@ -212,6 +212,16 @@ describe("round 2", () => {
     expect(reveal.round2Available).toBe(false);
   });
 
+  it("does not offer round 2 when too few decoys remain", async () => {
+    const { creatorToken } = (await createSession(undefined, 10))!;
+    await putSwipes(creatorToken, await fullDeckSwipes(creatorToken, (_, i) => i < 5));
+    const invite = (await getStateView(creatorToken))!.inviteToken!;
+    await startB(invite);
+    await putSwipes(invite, await fullDeckSwipes(invite, (_, i) => i >= 5));
+    expect((await getReveal(creatorToken))!.round2Available).toBe(false);
+    expect(await armRound2(creatorToken)).toBe(false);
+  });
+
   it("round-2 completion produces a second reveal", async () => {
     const { creatorToken, invite } = await zeroMatchSession();
     await armRound2(creatorToken);

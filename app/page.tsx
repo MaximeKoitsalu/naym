@@ -31,7 +31,6 @@ export default function Landing() {
         body: JSON.stringify({ deckIds: picked, size }),
       });
       const { creatorToken } = await res.json();
-      localStorage.setItem(`naym:role:${creatorToken}`, "A");
       router.push(`/s/${creatorToken}`);
     } catch {
       setBusy(false);

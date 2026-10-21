@@ -6,7 +6,6 @@ import {
   guardSwipes,
   intersection,
   isComplete,
-  union,
 } from "./reveal";
 import type {
   EventName,
@@ -112,8 +111,6 @@ export async function putSwipes(
 
   const wasComplete = isComplete(deck, stored);
   await store.set(swipesKey(meta.id, role, round), guarded, SESSION_TTL_S);
-  // Refresh meta TTL alongside writes so an active session never expires mid-deck.
-  await store.set(metaKey(meta.id), meta, SESSION_TTL_S);
   await logEvent(meta.id, "swipe_progress", role, { count: guarded.length, round });
 
   const completed = isComplete(deck, guarded);
@@ -150,7 +147,7 @@ export async function armRound2(token: string): Promise<boolean> {
   if (!isComplete(meta.deck, a) || !isComplete(meta.deck, b)) return false;
   if (intersection(meta.deck, a, b).length > 0) return false;
   const r2deck = buildRound2Deck(meta.deck, a, b);
-  if (!r2deck) return false; // empty union → warm ending, no round 2
+  if (!r2deck) return false; // empty union or too few decoys → warm ending, no round 2
   meta.round2 = { deck: r2deck, armedAt: Date.now() };
   await getStore().set(metaKey(meta.id), meta, SESSION_TTL_S);
   await logEvent(meta.id, "round2_armed", role);
@@ -161,7 +158,10 @@ export async function armRound2(token: string): Promise<boolean> {
  * The blindness boundary. Computes the reveal server-side and returns
  * ONLY what the product means to show. Raw swipe arrays never leave here.
  */
-export async function getReveal(token: string): Promise<RevealPayload | null> {
+export async function getReveal(
+  token: string,
+  { logView = true } = {},
+): Promise<RevealPayload | null> {
   const resolved = await resolveToken(token);
   if (!resolved) return null;
   const { meta, role } = resolved;
@@ -172,11 +172,11 @@ export async function getReveal(token: string): Promise<RevealPayload | null> {
   if (!isComplete(meta.deck, a) || !isComplete(meta.deck, b)) return null;
 
   const matches = intersection(meta.deck, a, b);
-  const u = union(meta.deck, a, b);
   const payload: RevealPayload = {
     matches,
     deckSize: meta.deck.length,
-    round2Available: matches.length === 0 && u.length > 0,
+    // Same rule armRound2 applies — the button never offers a 409.
+    round2Available: matches.length === 0 && buildRound2Deck(meta.deck, a, b) !== null,
     round2Armed: meta.round2 !== null,
   };
   if (meta.round2) {
@@ -191,7 +191,7 @@ export async function getReveal(token: string): Promise<RevealPayload | null> {
       };
     }
   }
-  await logEvent(meta.id, "reveal_viewed", role);
+  if (logView) await logEvent(meta.id, "reveal_viewed", role);
   return payload;
 }
 

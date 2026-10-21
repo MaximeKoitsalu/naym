@@ -285,7 +285,7 @@ export default function Reveal({
                 )}
                 {zero && !reveal.round2Available && !reveal.round2 && (
                   <p className="font-display text-xl">
-                    Fifty honest answers is its own keepsake.
+                    {reveal.deckSize} honest answers is its own keepsake.
                   </p>
                 )}
 

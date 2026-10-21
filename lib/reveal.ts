@@ -31,6 +31,8 @@ export function union(deck: NameCard[], a: Swipe[], b: Swipe[]): NameCard[] {
  *
  * `rand` is injectable for deterministic tests.
  */
+export const MIN_DECOYS = 3;
+
 export function buildRound2Deck(
   deck: NameCard[],
   a: Swipe[],
@@ -41,12 +43,14 @@ export function buildRound2Deck(
   if (u.length === 0) return null; // empty union → skip round 2, warm ending
   const unionIds = new Set(u.map((c) => c.id));
   const remainder = deck.filter((c) => !unionIds.has(c.id));
+  // Too few decoys and "not mine" simply IS the partner's likes — warm ending instead.
+  if (remainder.length < MIN_DECOYS) return null;
   const decoyCount = Math.min(remainder.length, Math.max(5, Math.round(u.length * 0.5)));
   const decoys = shuffle(remainder, rand).slice(0, decoyCount);
   return shuffle([...u, ...decoys], rand);
 }
 
-function shuffle<T>(arr: T[], rand: () => number): T[] {
+export function shuffle<T>(arr: T[], rand: () => number): T[] {
   const out = [...arr];
   for (let i = out.length - 1; i > 0; i--) {
     const j = Math.floor(rand() * (i + 1));

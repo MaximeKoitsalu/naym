@@ -5,7 +5,7 @@ import { Redis } from "@upstash/redis";
 
   Key layout — each writer owns its key, so partners never clobber each other:
     tok:{token}            → { id, role }            (TTL 30d)
-    sess:{id}:meta         → SessionMeta JSON        (TTL 30d, refreshed on write)
+    sess:{id}:meta         → SessionMeta JSON        (TTL 30d)
     sess:{id}:swipes:A|B   → Swipe[] JSON            (TTL 30d)
     sess:{id}:r2:A|B       → Swipe[] JSON (round 2)  (TTL 30d)
     events:log             → append-only list, NO TTL (the kill metric outlives sessions)
@@ -74,6 +74,11 @@ export function getStore(): Store {
   if (globalThis.__naymStore) return globalThis.__naymStore;
   const url = process.env.UPSTASH_REDIS_REST_URL;
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  // A per-process Map in production splits sessions across instances —
+  // every invite would read as expired. Fail loudly instead.
+  if (!(url && token) && process.env.NODE_ENV === "production") {
+    throw new Error("UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN must be set in production");
+  }
   const store =
     url && token
       ? new UpstashStore(new Redis({ url, token }))

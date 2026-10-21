@@ -73,7 +73,7 @@ export type RevealPayload = {
   deckSize: number;
   /** Round-2 reveal, present only when round 2 completed. */
   round2?: { matches: NameCard[]; deckSize: number };
-  /** True when round 2 can be offered (zero matches, non-empty union). */
+  /** True when round 2 can be offered (zero matches, non-empty union, enough decoys). */
   round2Available: boolean;
   round2Armed: boolean;
 };
