@@ -20,14 +20,16 @@ async function loadFraunces(): Promise<ArrayBuffer | null> {
   try {
     const css = await fetch(
       "https://fonts.googleapis.com/css2?family=Fraunces:wght@600&display=swap",
-      { headers: { "User-Agent": "Mozilla/5.0" } },
+      { headers: { "User-Agent": "Mozilla/5.0" }, signal: AbortSignal.timeout(3000) },
     ).then((r) => r.text());
     const url = css.match(/src: url\((.+?)\) format/)?.[1];
     if (!url) return null;
-    frauncesCache = await fetch(url).then((r) => r.arrayBuffer());
+    frauncesCache = await fetch(url, { signal: AbortSignal.timeout(3000) }).then((r) =>
+      r.arrayBuffer(),
+    );
     return frauncesCache;
   } catch {
-    return null; // offline dev — render with default serif
+    return null; // offline or slow — render with default serif
   }
 }
 
@@ -36,7 +38,8 @@ export async function GET(req: NextRequest) {
   if (!token) return new Response("missing token", { status: 400 });
   const resolved = await resolveToken(token);
   if (!resolved) return new Response("expired", { status: 404 });
-  const reveal = await getReveal(token);
+  // Rendering the keepsake is not a reveal view — keep the funnel honest.
+  const reveal = await getReveal(token, { logView: false });
   if (!reveal) return new Response("not ready", { status: 409 });
 
   const final = reveal.round2 ?? reveal;

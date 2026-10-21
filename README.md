@@ -29,7 +29,7 @@ npm run dev
 The app runs on an in-memory store by default, so it works out of the box with no external services.
 
 > [!NOTE]
-> To persist sessions across restarts (recommended for anything beyond local development), set `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` to point at an [Upstash Redis](https://upstash.com/) instance. See `lib/store.ts` for the key layout.
+> To persist sessions across restarts (recommended for anything beyond local development), set `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` to point at an [Upstash Redis](https://upstash.com/) instance. Production (`npm start`) refuses to run without them. See `lib/store.ts` for the key layout.
 
 ## Commands
 

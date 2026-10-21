@@ -5,6 +5,7 @@ import german from "@/data/decks/german.json";
 import italian from "@/data/decks/italian.json";
 import french from "@/data/decks/french.json";
 import type { NameCard } from "./types";
+import { shuffle } from "./reveal";
 import { DEFAULT_DECK_SIZE, MAX_DECK_SIZE, MIN_DECK_SIZE } from "./deck-manifest";
 
 /*
@@ -105,13 +106,4 @@ export function buildSessionDeck(
     names,
     version: createHash("sha256").update(JSON.stringify(names)).digest("hex").slice(0, 12),
   };
-}
-
-function shuffle<T>(arr: T[], rand: () => number): T[] {
-  const out = [...arr];
-  for (let i = out.length - 1; i > 0; i--) {
-    const j = Math.floor(rand() * (i + 1));
-    [out[i], out[j]] = [out[j], out[i]];
-  }
-  return out;
 }

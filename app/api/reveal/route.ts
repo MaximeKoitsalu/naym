@@ -5,7 +5,7 @@ import { getReveal } from "@/lib/session";
  * THE BLINDNESS BOUNDARY. This endpoint returns the server-computed
  * intersection only. Raw per-role swipe arrays never serialize off the
  * server, here or anywhere — a devtools tab can only see what the
- * product means to show. (Enforced by e2e/blindness.spec.ts.)
+ * product means to show. (Enforced by e2e/ritual.spec.ts.)
  */
 export async function GET(req: NextRequest) {
   const token = req.nextUrl.searchParams.get("token");

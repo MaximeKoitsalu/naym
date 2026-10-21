@@ -41,7 +41,6 @@ export default function SessionClient({ token }: { token: string }) {
   const [view, setView] = useState<StateView | null>(null);
   const [expired, setExpired] = useState(false);
   const [bLandingDismissed, setBLandingDismissed] = useState(false);
-  const pollStart = useRef(Date.now());
 
   const refresh = useCallback(async () => {
     const res = await fetch(`/api/state?token=${encodeURIComponent(token)}`, {
@@ -60,16 +59,30 @@ export default function SessionClient({ token }: { token: string }) {
     refresh();
   }, [refresh]);
 
-  // Waiting-state poll: 5s, backing off to 15s after 5 minutes.
+  // Waiting-state poll: 5s, backing off to 15s after 5 minutes of waiting.
   const waiting =
     view !== null &&
     ((view.ownDone && !view.otherDone) ||
       (view.round2 !== null && view.round2.ownDone && !view.round2.otherDone));
   useEffect(() => {
     if (!waiting) return;
-    const interval = Date.now() - pollStart.current > 5 * 60_000 ? 15_000 : 5_000;
-    const t = setInterval(refresh, interval);
-    return () => clearInterval(t);
+    const since = Date.now();
+    let stopped = false;
+    let t: ReturnType<typeof setTimeout>;
+    const tick = () => {
+      t = setTimeout(
+        async () => {
+          await refresh().catch(() => null);
+          if (!stopped) tick();
+        },
+        Date.now() - since > 5 * 60_000 ? 15_000 : 5_000,
+      );
+    };
+    tick();
+    return () => {
+      stopped = true;
+      clearTimeout(t);
+    };
   }, [waiting, refresh]);
 
   /**

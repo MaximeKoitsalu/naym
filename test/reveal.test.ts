@@ -56,6 +56,12 @@ describe("round-2 deck — decoy padding defeats set subtraction", () => {
     const recovered = ids.filter((id) => !aLikes.has(id));
     expect(recovered).not.toEqual(["nils"]);
   });
+  it("returns null when too few unliked names remain to act as decoys", () => {
+    // 6-card deck, 3 liked each, no overlap: zero decoys would expose B's likes outright.
+    const a = all((id) => ["astrid", "nils", "liv"].includes(id));
+    const b = all((id) => ["erik", "saga", "leif"].includes(id));
+    expect(buildRound2Deck(deck, a, b)).toBeNull();
+  });
   it("never duplicates names", () => {
     const a = all((id) => ["astrid", "liv"].includes(id));
     const b = all((id) => ["liv", "erik"].includes(id));
