@@ -58,7 +58,9 @@ function shuffle<T>(arr: T[], rand: () => number): T[] {
 /**
  * Monotonic swipe-array merge guard: an incoming full-array PUT may never
  * shrink stored progress (an empty webview localStorage must not wipe real
- * progress), and every id must belong to the pinned deck.
+ * progress), every id must belong to the pinned deck, and a complete
+ * deck is frozen — rewriting likes after the reveal would turn the reveal
+ * into an oracle for the partner's picks.
  * Returns the array to store, or null when the write must be rejected.
  */
 export function guardSwipes(
@@ -66,6 +68,7 @@ export function guardSwipes(
   stored: Swipe[],
   incoming: Swipe[],
 ): Swipe[] | null {
+  if (isComplete(deck, stored)) return null;
   if (incoming.length < stored.length) return null;
   if (incoming.length > deck.length) return null;
   const deckIds = new Set(deck.map((c) => c.id));

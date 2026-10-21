@@ -128,6 +128,16 @@ describe("the blindness boundary", () => {
 });
 
 describe("sync protocol", () => {
+  it("a partner cannot rewrite likes after the reveal to read the other's picks", async () => {
+    const { creatorToken } = (await createSession())!;
+    const invite = await inviteTokenFor(creatorToken); // A likes cards 0-4
+    await startB(invite);
+    await putSwipes(invite, await fullDeckSwipes(invite, (_, i) => i >= 5 && i < 9));
+    expect((await getReveal(creatorToken))!.matches).toHaveLength(0);
+    await putSwipes(creatorToken, await fullDeckSwipes(creatorToken, () => true));
+    expect((await getReveal(creatorToken))!.matches).toHaveLength(0);
+  });
+
   it("monotonic guard holds through the API path: empty PUT cannot wipe", async () => {
     const { creatorToken } = (await createSession())!;
     const partial = (await fullDeckSwipes(creatorToken, () => true)).slice(0, 10);
