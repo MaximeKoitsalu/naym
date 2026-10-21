@@ -19,6 +19,35 @@ import type { RevealPayload } from "@/lib/types";
   the emotional arc survives with animations off (design review D11).
 */
 
+/**
+ * Share the keepsake PICTURE, never its URL: the token in that URL is the
+ * key to this partner's raw swipes. Native file share where supported,
+ * download otherwise.
+ */
+export async function shareKeepsake(token: string) {
+  fetch("/api/event", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ token, event: "reveal_shared" }),
+  }).catch(() => null);
+  const res = await fetch(`/api/keepsake?token=${encodeURIComponent(token)}`).catch(() => null);
+  if (!res?.ok) return;
+  const file = new File([await res.blob()], "naym.png", { type: "image/png" });
+  if (navigator.canShare?.({ files: [file] })) {
+    try {
+      await navigator.share({ files: [file], title: "naym", text: "We both chose…" });
+      return;
+    } catch {
+      /* dismissed or activation expired — fall through to download */
+    }
+  }
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(file);
+  a.download = file.name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000); // Safari needs the URL alive while the download starts
+}
+
 type Phase = "gate" | "beat1" | "beat2" | "beat3" | "beat4";
 
 export default function Reveal({
@@ -67,22 +96,6 @@ export default function Reveal({
     }).catch(() => null);
     if (res?.ok) onArmedRound2();
     else setArming(false);
-  }
-
-  async function share() {
-    const url = `${window.location.origin}/api/keepsake?token=${encodeURIComponent(token)}`;
-    fetch("/api/event", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ token, event: "reveal_shared" }),
-    }).catch(() => null);
-    if (navigator.share) {
-      try {
-        await navigator.share({ title: "naym", text: "We both chose…", url });
-        return;
-      } catch {}
-    }
-    window.open(url, "_blank");
   }
 
   if (!reveal && phase !== "gate") return null;
@@ -236,7 +249,7 @@ export default function Reveal({
                 {!zero && (
                   <>
                     <button
-                      onClick={share}
+                      onClick={() => shareKeepsake(token)}
                       className="min-h-14 rounded-full bg-ink px-8 text-lg font-medium text-paper"
                     >
                       Save the keepsake card

@@ -78,6 +78,7 @@ export default function SessionClient({ token }: { token: string }) {
    * the server's monotonic guard rejects shrinking writes, so an empty
    * webview localStorage can never wipe real progress.
    */
+  const putQueue = useRef<Promise<unknown>>(Promise.resolve());
   const syncSwipes = useCallback(
     async (swipes: Swipe[], round: 1 | 2, awaitIt = false) => {
       try {
@@ -85,11 +86,15 @@ export default function SessionClient({ token }: { token: string }) {
       } catch {
         /* private mode — server still gets the array */
       }
-      const put = fetch("/api/swipes", {
-        method: "PUT",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ token, swipes, round }),
-      }).catch(() => null);
+      // One PUT in flight at a time: overlapping PUTs race the server's
+      // read-then-write and an older, shorter array can land last.
+      const put = (putQueue.current = putQueue.current.then(() =>
+        fetch("/api/swipes", {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ token, swipes, round }),
+        }).catch(() => null),
+      ));
       if (awaitIt) {
         await put;
         await refresh();
@@ -97,6 +102,21 @@ export default function SessionClient({ token }: { token: string }) {
     },
     [token, refresh],
   );
+
+  // Heal a lost final PUT: when local leads the server after a refresh,
+  // re-send it (capped, backing off) — otherwise the deck sits on "Sealed"
+  // forever and the partner never sees completion.
+  const resyncs = useRef(0);
+  useEffect(() => {
+    if (!view || resyncs.current >= 5) return;
+    const round = view.round2 ? 2 : 1;
+    const server = view.round2 ? view.round2.ownSwipes : view.ownSwipes;
+    const local = readLocal(token, round);
+    if (local.length <= server.length) return;
+    const t = setTimeout(() => syncSwipes(local, round, true), resyncs.current * 2000);
+    resyncs.current++;
+    return () => clearTimeout(t);
+  }, [view, token, syncSwipes]);
 
   if (expired) return <ExpiredScreen />;
   if (!view) return <LoadingScreen />;

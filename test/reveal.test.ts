@@ -73,6 +73,10 @@ describe("monotonic guard — an empty webview can never wipe progress", () => {
   it("accepts equal-length replays (idempotent heal)", () => {
     expect(guardSwipes(deck, stored, stored)).toEqual(stored);
   });
+  it("freezes a complete deck — no rewriting likes after the reveal", () => {
+    const done = all(() => false);
+    expect(guardSwipes(deck, done, all(() => true))).toBeNull();
+  });
   it("accepts forward progress", () => {
     const next = [...stored, swipe("liv", true)];
     expect(guardSwipes(deck, stored, next)).toEqual(next);
