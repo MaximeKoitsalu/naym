@@ -1,6 +1,6 @@
 import { getStore } from "./store";
 import { ptokKey, shortlistKey, type PartnerRecord } from "./shortlist";
-import type { NameCard, Partner, Shortlist } from "./types";
+import { otherPartner, type NameCard, type Partner, type Shortlist } from "./types";
 
 /*
   Duels (#22): each Partner privately answers "this or that" pairs drawn from
@@ -117,7 +117,7 @@ async function load(token: string) {
   const shortlist = await store.get<Shortlist>(shortlistKey(rec.shortlistId));
   if (!shortlist) return null;
   const id = rec.shortlistId;
-  const other: Partner = rec.partner === 1 ? 2 : 1;
+  const other = otherPartner(rec.partner);
   const ids = shortlist.entries.map((e) => e.id);
   const [mine, theirs, order] = await Promise.all([
     store.get<Picks>(duelsKey(id, rec.partner)),

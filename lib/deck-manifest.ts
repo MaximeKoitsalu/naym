@@ -1,5 +1,3 @@
-import type { Shortlist } from "./types";
-
 /*
   Client-safe deck manifest for the origin picker — labels, per-gender sample
   names and per-gender card counts only, so the landing bundle never carries
@@ -43,10 +41,6 @@ export const DECK_MANIFEST = [
 export const DECK_GENDERS = ["girl", "boy", "unsure"] as const;
 export type DeckGender = (typeof DECK_GENDERS)[number];
 
-/** The deck builder's default for a Shortlist's `expecting` (one seam for #24's type unification). */
-export function deckGenderFor(expecting: Shortlist["expecting"]): DeckGender {
-  return expecting === "not sure yet" ? "unsure" : expecting;
-}
 
 export type GenderCounts = { girl: number; boy: number; unisex: number };
 

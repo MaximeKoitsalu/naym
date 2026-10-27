@@ -1,3 +1,5 @@
+import type { DeckGender } from "./deck-manifest";
+
 export type NameCard = {
   id: string;
   name: string;
@@ -69,7 +71,8 @@ export type EventName =
   | "keepsake_saved"
   | "reveal_shared"
   | "round2_armed"
-  | "handoff_mode_selected";
+  | "handoff_mode_selected"
+  | "shortlist_link_reissued";
 
 export type RevealPayload = {
   /** Mutual likes only — raw per-role arrays NEVER serialize off the server. */
@@ -82,10 +85,13 @@ export type RevealPayload = {
   round2Armed: boolean;
   /** The viewer's OWN Shortlist link token — never the other partner's. */
   shortlistToken: string | null;
+  /** Which Partner that token belongs to — the viewer's own number. */
+  shortlistPartner: Partner | null;
 };
 
 /** A lasting identity on a Shortlist — distinct from the per-session roles A/B. */
 export type Partner = 1 | 2;
+export const otherPartner = (p: Partner): Partner => (p === 1 ? 2 : 1);
 
 /** A Match copied onto the Shortlist: full card snapshot, so it outlives its session. */
 export type ShortlistEntry = NameCard & { matchedAt: number };
@@ -94,7 +100,8 @@ export type Shortlist = {
   id: string;
   /** Partner tokens; Partner 2 is minted on B's start tap, never on GET. */
   partners: Record<Partner, string | null>;
-  expecting: "girl" | "boy" | "not sure yet";
+  /** Who the couple is naming — the default for later decks and the list filter. */
+  expecting: DeckGender;
   entries: ShortlistEntry[];
 };
 

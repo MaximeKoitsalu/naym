@@ -1,6 +1,7 @@
 import { nanoid } from "nanoid";
 import { buildSessionDeck, DEFAULT_DECK_ID, type DeckEntry } from "./decks";
 import { MIN_DECK_SIZE, type DeckGender } from "./deck-manifest";
+import { logEvent } from "./events";
 import { getStore, SESSION_TTL_S } from "./store";
 import {
   createShortlist,
@@ -19,16 +20,18 @@ import {
   intersection,
   isComplete,
 } from "./reveal";
-import type {
-  DealView,
-  EventName,
-  NameCard,
-  Partner,
-  RevealPayload,
-  Role,
-  SessionMeta,
-  Swipe,
+import {
+  otherPartner,
+  type DealView,
+  type NameCard,
+  type Partner,
+  type RevealPayload,
+  type Role,
+  type SessionMeta,
+  type Swipe,
 } from "./types";
+
+export { logEvent };
 
 type TokenRecord = { id: string; role: Role };
 
@@ -36,22 +39,6 @@ const tokKey = (t: string) => `tok:${t}`;
 const metaKey = (id: string) => `sess:${id}:meta`;
 const swipesKey = (id: string, role: Role, round: 1 | 2) =>
   round === 1 ? `sess:${id}:swipes:${role}` : `sess:${id}:r2:${role}`;
-
-export async function logEvent(
-  sessionId: string,
-  event: EventName,
-  role?: Role,
-  extra?: Record<string, unknown>,
-) {
-  // Durable key, no TTL — slow recruitment must never delete the kill metric.
-  await getStore().append("events:log", {
-    session: sessionId,
-    event,
-    role: role ?? null,
-    ts: Date.now(),
-    ...extra,
-  });
-}
 
 export async function createSession(
   deckIds: string | string[] = DEFAULT_DECK_ID,
@@ -65,7 +52,7 @@ export async function createSession(
     gender,
   );
   if (!entry) return null; // unknown deck or empty pick — route turns this into a 400
-  const shortlist = await createShortlist(); // mints Partner 1
+  const shortlist = await createShortlist(gender); // mints Partner 1
   return openSession(entry, { id: shortlist.id, A: 1, B: 2 });
 }
 
@@ -137,7 +124,7 @@ export async function dealSession(
   const entry = buildSessionDeck(deckIds, size, gender, Math.random, seen);
   if (!entry) return null;
   if (entry.names.length < MIN_DECK_SIZE) return { dry: entry.names.length };
-  const other: Partner = partner.partner === 1 ? 2 : 1;
+  const other = otherPartner(partner.partner);
   const { creatorToken, inviteToken } = await openSession(entry, {
     id: partner.shortlistId,
     A: partner.partner,
@@ -302,6 +289,7 @@ export async function getReveal(
     round2Available: matches.length === 0 && buildRound2Deck(meta.deck, a, b) !== null,
     round2Armed: meta.round2 !== null,
     shortlistToken: null,
+    shortlistPartner: null,
   };
   if (meta.round2) {
     const [r2a, r2b] = await Promise.all([
@@ -317,7 +305,10 @@ export async function getReveal(
   }
   if (meta.shortlist) {
     await landSessionMatches(meta); // heals a landing lost at completion
+    // Any live session token reaches its Partner's CURRENT link: reissue is for
+    // lost links, not compromised ones (accepted, #16).
     payload.shortlistToken = await partnerToken(meta.shortlist.id, meta.shortlist[role]);
+    payload.shortlistPartner = meta.shortlist[role];
   }
   if (logView) await logEvent(meta.id, "reveal_viewed", role);
   return payload;

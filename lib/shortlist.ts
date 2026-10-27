@@ -1,6 +1,8 @@
 import { nanoid } from "nanoid";
 import { getStore } from "./store";
-import type { NameCard, Partner, Shortlist } from "./types";
+import { DECK_GENDERS, type DeckGender } from "./deck-manifest";
+import { logEvent } from "./events";
+import { otherPartner, type NameCard, type Partner, type Shortlist } from "./types";
 
 /*
   The couple's lasting Shortlist. Every key here is durable (no TTL) — the
@@ -14,14 +16,16 @@ export const shortlistKey = (id: string) => `shortlist:${id}`;
 export const ptokKey = (t: string) => `ptok:${t}`;
 
 /** A new Shortlist with Partner 1 minted; Partner 2 waits for B's start tap. */
-export async function createShortlist(): Promise<{ id: string; token: string }> {
+export async function createShortlist(
+  expecting: DeckGender = "unsure",
+): Promise<{ id: string; token: string }> {
   const id = nanoid(12);
   const token = nanoid(21);
   const store = getStore();
   const shortlist: Shortlist = {
     id,
     partners: { 1: token, 2: null },
-    expecting: "not sure yet",
+    expecting,
     entries: [],
   };
   await store.set(shortlistKey(id), shortlist);
@@ -76,7 +80,8 @@ export async function getShortlistView(token: string) {
   if (!shortlist) return null;
   return {
     partner: rec.partner,
-    expecting: shortlist.expecting,
+    // Shortlists made before the picker stored "not sure yet".
+    expecting: DECK_GENDERS.find((g) => g === shortlist.expecting) ?? "unsure",
     entries: shortlist.entries,
   };
 }
@@ -121,4 +126,45 @@ export async function recordDeal(id: string, deal: DealRecord): Promise<void> {
 
 export async function getDeal(id: string): Promise<DealRecord | null> {
   return getStore().get<DealRecord>(dealKey(id));
+}
+
+/** Either partner can change who they're naming ("finding out"). Nothing is deleted. */
+export async function setExpecting(token: string, expecting: DeckGender): Promise<boolean> {
+  const store = getStore();
+  const rec = await store.get<PartnerRecord>(ptokKey(token));
+  if (!rec) return false;
+  const shortlist = await store.get<Shortlist>(shortlistKey(rec.shortlistId));
+  if (!shortlist) return false;
+  // shortcut: read-modify-write on the Shortlist key, so a match landing at the
+  // same instant can be dropped (the next reveal view re-lands it); same fix as landMatches.
+  shortlist.expecting = expecting;
+  await store.set(shortlistKey(rec.shortlistId), shortlist);
+  return true;
+}
+
+/**
+ * A lost link: mints a fresh token for the OTHER partner and revokes their old
+ * one. The requester's own token is never touched. Null when the token is
+ * unknown or the other partner hasn't joined yet (nothing to reissue).
+ */
+export async function reissuePartnerLink(token: string): Promise<string | null> {
+  const store = getStore();
+  const rec = await store.get<PartnerRecord>(ptokKey(token));
+  if (!rec) return null;
+  const shortlist = await store.get<Shortlist>(shortlistKey(rec.shortlistId));
+  const other = otherPartner(rec.partner);
+  const old = shortlist?.partners[other];
+  if (!shortlist || !old) return null;
+  // shortcut: read-modify-write on the Shortlist key, so a match landing at the
+  // same instant can be dropped (the next reveal view re-lands it); same fix as landMatches.
+  const fresh = nanoid(21);
+  await store.set(ptokKey(fresh), { shortlistId: shortlist.id, partner: other } satisfies PartnerRecord);
+  shortlist.partners[other] = fresh;
+  await store.set(shortlistKey(shortlist.id), shortlist);
+  await store.del(ptokKey(old));
+  await logEvent(null, "shortlist_link_reissued", undefined, {
+    shortlist: shortlist.id,
+    partner: rec.partner,
+  });
+  return fresh;
 }

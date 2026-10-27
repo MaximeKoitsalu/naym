@@ -30,9 +30,12 @@ export default async function ShortlistRoute({
     );
   }
   const duels = (await getDuelsView(token))!;
+  // Keyed by token: passing a shared phone over remounts, carrying no state across.
   return (
     <ShortlistPage
+      key={token}
       token={token}
+      partner={view.partner}
       expecting={view.expecting}
       entries={inCombinedOrder(view.entries, duels.order)}
       deal={await getDealView(token)}

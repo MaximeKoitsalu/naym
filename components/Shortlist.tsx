@@ -2,50 +2,22 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import type { DealView, Shortlist, ShortlistEntry } from "@/lib/types";
-import { deckGenderFor, type GenderCounts } from "@/lib/deck-manifest";
+import type { DeckGender, GenderCounts } from "@/lib/deck-manifest";
 import type { DuelsView } from "@/lib/duels";
+import { defaultFilter, visibleEntries } from "@/lib/shortlist-filter";
+import { lastShortlist, otherHolder, remember } from "@/lib/shortlist-device";
+import type { DealView, Partner, ShortlistEntry } from "@/lib/types";
 import { DuelsButton, OrderSummary, duelsStep, rankClass } from "./Duels";
+import ShortlistSheet, { CopyLinkButton } from "./ShortlistSheet";
 
 /*
   The Shortlist page — variant C, "the list is the page" (#18): the names set
   like the keepsake, one floating next-step button, the links in a sheet.
 */
 
-// shortcut: one remembered link per device, so on a shared phone the last
-// partner to open theirs wins; split per partner with same-device mode (#26).
-const LOCAL_KEY = "naym:shortlist";
-
-function remember(token: string) {
-  try {
-    localStorage.setItem(LOCAL_KEY, `/shortlist/${token}`);
-  } catch {
-    /* private mode — the link still works, it just isn't remembered */
-  }
-}
-
-function CopyLinkButton({ token, autoFocus }: { token: string; autoFocus?: boolean }) {
-  const [copied, setCopied] = useState(false);
-  async function copy() {
-    await navigator.clipboard
-      .writeText(`${window.location.origin}/shortlist/${token}`)
-      .then(() => setCopied(true))
-      .catch(() => null);
-  }
-  return (
-    <button
-      onClick={copy}
-      autoFocus={autoFocus}
-      className="min-h-12 w-full rounded-full border border-ink-soft/25 px-6 font-medium"
-    >
-      {copied ? "Link copied" : "Copy my Shortlist link"}
-    </button>
-  );
-}
-
 /** On the reveal: this partner's OWN link only. */
-export function KeepShortlist({ token }: { token: string }) {
-  useEffect(() => remember(token), [token]);
+export function KeepShortlist({ token, partner }: { token: string; partner?: Partner }) {
+  useEffect(() => remember(token, partner), [token, partner]);
   return (
     <section className="flex flex-col gap-3 rounded-[20px] bg-paper-dim p-5 text-left">
       <p className="font-display text-xl">Keep your Shortlist</p>
@@ -68,11 +40,7 @@ export function KeepShortlist({ token }: { token: string }) {
 export function BackToShortlist() {
   const [href, setHref] = useState<string | null>(null);
   useEffect(() => {
-    try {
-      setHref(localStorage.getItem(LOCAL_KEY));
-    } catch {
-      /* private mode */
-    }
+    setHref(lastShortlist());
   }, []);
   if (!href) return null;
   return (
@@ -85,25 +53,46 @@ export function BackToShortlist() {
   );
 }
 
-const forWhom: Record<Shortlist["expecting"], string> = {
+const forWhom: Record<DeckGender, string> = {
   girl: "daughter",
   boy: "son",
-  "not sure yet": "baby",
+  unsure: "baby",
 };
 
 const day = (ts: number) =>
   new Date(ts).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 
+/**
+ * Same-device mode: when this phone holds both Partners' links. Passing it
+ * over swaps the URL — the route keys the page by token, so nothing of the
+ * holder's state survives into the other partner's view.
+ */
+function HolderStrip({ partner }: { partner: Partner }) {
+  const [other, setOther] = useState<string | null>(null);
+  useEffect(() => setOther(otherHolder(partner)), [partner]);
+  if (!other) return null;
+  return (
+    <p className="mx-6 mt-4 text-center text-sm text-ink-soft">
+      Holding the phone: <b className="text-ink">Partner {partner}</b> ·{" "}
+      <Link replace href={`/shortlist/${other}`} className="underline">
+        pass it over
+      </Link>
+    </p>
+  );
+}
+
 export default function ShortlistPage({
   token,
-  expecting,
+  partner,
+  expecting: initialExpecting,
   entries,
   deal = null,
   unseen,
   duels,
 }: {
   token: string;
-  expecting: Shortlist["expecting"];
+  partner: Partner;
+  expecting: DeckGender;
   entries: ShortlistEntry[];
   /** The live dealt deck as this Partner sees it (getDealView). */
   deal?: DealView | null;
@@ -112,16 +101,33 @@ export default function ShortlistPage({
   duels: DuelsView;
 }) {
   const [sheet, setSheet] = useState(false);
-  useEffect(() => remember(token), [token]);
-  useEffect(() => {
-    if (!sheet) return;
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setSheet(false);
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [sheet]);
+  const [expecting, setExpecting] = useState(initialExpecting);
+  const [filter, setFilter] = useState(() => defaultFilter(initialExpecting));
+  const shown = visibleEntries(entries, filter);
+  useEffect(() => remember(token, partner), [token, partner]);
+
+  function changeExpecting(g: DeckGender) {
+    // Optimistic: the filter jumps to the new gender; a failed save reverts both.
+    const before = expecting;
+    setExpecting(g);
+    setFilter(defaultFilter(g));
+    fetch("/api/shortlist/expecting", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ token, expecting: g }),
+    })
+      .then((r) => {
+        if (!r.ok) throw new Error();
+      })
+      .catch(() => {
+        setExpecting(before);
+        setFilter(defaultFilter(before));
+      });
+  }
 
   return (
     <main className="flex flex-1 flex-col pb-40">
+      <HolderStrip partner={partner} />
       <section className="mx-6 mt-6 flex flex-col items-center rounded-[20px] bg-paper-dim px-6 py-10 text-center">
         <h1 className="text-xs uppercase tracking-widest text-ink-soft">
           for our {forWhom[expecting]}
@@ -130,10 +136,14 @@ export default function ShortlistPage({
           <p className="mt-6 font-display text-2xl text-ink-soft">
             No names yet — your matches will land here.
           </p>
+        ) : shown.length === 0 ? (
+          <p className="mt-6 font-display text-2xl text-ink-soft">
+            No {filter} names yet — the filter is in the sheet.
+          </p>
         ) : (
           <>
             <ol className="mt-6 space-y-3">
-              {entries.map((e, i) => (
+              {shown.map((e, i) => (
                 <li
                   key={e.id}
                   className={`font-display ${rankClass(i, !!duels.order)}`}
@@ -143,8 +153,9 @@ export default function ShortlistPage({
               ))}
             </ol>
             <p className="mt-8 text-sm text-ink-soft" suppressHydrationWarning>
-              {entries.length} {entries.length === 1 ? "name" : "names"} you both love · since{" "}
-              {day(entries[0].matchedAt)}
+              {shown.length === entries.length ? shown.length : `${shown.length} of ${entries.length}`}{" "}
+              {entries.length === 1 ? "name" : "names"} you both love · since{" "}
+              {day(Math.min(...entries.map((e) => e.matchedAt)))}
             </p>
           </>
         )}
@@ -158,7 +169,7 @@ export default function ShortlistPage({
         onClick={() => setSheet(true)}
         className="mx-auto mt-4 min-h-11 text-sm text-ink-soft underline"
       >
-        links
+        filter & links
       </button>
 
       <div className="fixed inset-x-0 bottom-0 mx-auto flex w-full max-w-[480px] flex-col gap-3 bg-paper px-6 pb-8 pt-4">
@@ -182,7 +193,7 @@ export default function ShortlistPage({
         {!deal || deal.canDeal ? (
           // ?deal= makes the builder attach to THIS Shortlist instead of minting one.
           <Link
-            href={`/?deal=${token}&gender=${deckGenderFor(expecting)}${
+            href={`/?deal=${token}&gender=${expecting}${
               unseen ? `&pool=${encodeURIComponent(JSON.stringify(unseen))}` : ""
             }`}
             className={`min-h-14 rounded-full px-8 py-4 text-center text-lg font-medium ${
@@ -199,32 +210,15 @@ export default function ShortlistPage({
       </div>
 
       {sheet && (
-        <div
-          className="fixed inset-0 z-10 flex items-end bg-ink/30"
-          onClick={() => setSheet(false)}
-        >
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-label="Shortlist links"
-            className="mx-auto w-full max-w-[480px] space-y-4 rounded-t-[20px] bg-paper p-6 pb-24"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <p className="text-sm text-ink-soft">
-              naming a: <b>{expecting}</b>
-            </p>
-            <p className="text-sm leading-relaxed text-ink-soft">
-              This link is yours alone. Your partner has their own.
-            </p>
-            <CopyLinkButton token={token} autoFocus />
-            <button
-              onClick={() => setSheet(false)}
-              className="min-h-11 w-full text-sm text-ink-soft underline"
-            >
-              close
-            </button>
-          </div>
-        </div>
+        <ShortlistSheet
+          token={token}
+          partner={partner}
+          expecting={expecting}
+          onExpecting={changeExpecting}
+          filter={filter}
+          onFilter={setFilter}
+          onClose={() => setSheet(false)}
+        />
       )}
     </main>
   );

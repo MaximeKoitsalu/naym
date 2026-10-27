@@ -12,7 +12,7 @@ import {
 } from "@/lib/session";
 import { getSeen, getShortlistView } from "@/lib/shortlist";
 import { buildSessionDeck, getDeckEntry, unseenCounts } from "@/lib/decks";
-import { deckGenderFor, MAX_DECK_SIZE, poolSize } from "@/lib/deck-manifest";
+import { MAX_DECK_SIZE, poolSize } from "@/lib/deck-manifest";
 import { POST as postSession } from "@/app/api/session/route";
 
 /*
@@ -219,13 +219,5 @@ describe("blend top-up", () => {
     const deck = buildSessionDeck(["nordic-v1", "greek-v1"], 50, "unsure", Math.random, exclude)!;
     expect(deck.names).toHaveLength(50);
     expect(deck.names.filter((c) => exclude.has(c.id))).toEqual([]);
-  });
-});
-
-describe("gender default", () => {
-  it("maps the Shortlist's expecting to the builder's gender", () => {
-    expect(deckGenderFor("girl")).toBe("girl");
-    expect(deckGenderFor("boy")).toBe("boy");
-    expect(deckGenderFor("not sure yet")).toBe("unsure");
   });
 });

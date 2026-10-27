@@ -290,7 +290,7 @@ export default function Reveal({
                   </p>
                 )}
 
-                {reveal.shortlistToken && <KeepShortlist token={reveal.shortlistToken} />}
+                {reveal.shortlistToken && <KeepShortlist token={reveal.shortlistToken} partner={reveal.shortlistPartner ?? undefined} />}
 
                 <p className="pt-4 font-display text-xl lowercase text-ink-soft">naym</p>
               </motion.div>

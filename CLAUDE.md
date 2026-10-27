@@ -44,9 +44,12 @@ npm run typecheck  # tsc --noEmit
 7. **Shortlist blindness:** the Shortlist only ever receives server-computed
    matches (`landSessionMatches`, called on completion and on reveal), and no
    per-Partner data (swipes, duel picks, the other Partner's token) serializes
-   to the other Partner. Shortlist keys (`shortlist:*`, `ptok:*`, `duels:*`) are durable, no TTL.
-   Duel picks (`duels:{id}:1|2`) never serialize off the server — only the
-   combined order does, and a pick is final.
+   to the other Partner. One deliberate exception: "send my partner a fresh
+   link" (`reissuePartnerLink`) hands the requester the other's NEW token and
+   revokes the old one — never the requester's own. Shortlist keys
+   (`shortlist:*`, `ptok:*`, `duels:*`) are durable, no TTL; a reissue deletes
+   the old `ptok:`. Duel picks (`duels:{id}:1|2`) never serialize off the
+   server — only the combined order does, and a pick is final.
 
 ## Storage
 
