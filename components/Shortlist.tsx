@@ -59,10 +59,13 @@ const forWhom: Record<DeckGender, string> = {
   unsure: "baby",
 };
 
-// One fixed locale and zone, so server and client render the same string.
+// Built by hand (no Intl/ICU), so server and client always render the same string.
 // shortcut: UTC can show the day before for late-evening matches east of it; switch to the viewer's zone after hydration if that matters.
-const day = (ts: number) =>
-  new Date(ts).toLocaleDateString("en-GB", { month: "short", day: "numeric", timeZone: "UTC" });
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const day = (ts: number) => {
+  const d = new Date(ts);
+  return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]}`;
+};
 
 /**
  * Same-device mode: when this phone holds both Partners' links. Passing it

@@ -101,7 +101,7 @@ export default function Landing() {
         </h2>
         <p className="text-base leading-relaxed text-ink-soft">
           Swipe {dealt} names in secret.{" "}
-          {deal ? "They show up on your partner's Shortlist." : "Send your partner one link."} Neither of
+          {deal ? "The deck shows up on your partner's Shortlist." : "Send your partner one link."} Neither of
           you sees anything until you&apos;ve both finished — then one reveal
           shows only the names you both chose.
         </p>
@@ -138,6 +138,8 @@ export default function Landing() {
         </legend>
         {DECK_MANIFEST.map((d) => {
           const active = picked.includes(d.id);
+          // Dealing: Seen sample names are left out; none left → no label.
+          const sample = samples?.[d.id]?.[gender] ?? d.sample[gender];
           return (
             <button
               key={d.id}
@@ -155,7 +157,7 @@ export default function Landing() {
               >
                 {d.label}
               </span>
-              <span className="text-sm text-ink-soft">{samples?.[d.id]?.[gender] ?? d.sample[gender]}</span>
+              {sample && <span className="text-sm text-ink-soft">{sample}</span>}
             </button>
           );
         })}
