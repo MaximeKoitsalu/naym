@@ -14,8 +14,8 @@ import ShortlistSheet, { CopyLinkButton } from "./ShortlistSheet";
 */
 
 /** On the reveal: this partner's OWN link only. */
-export function KeepShortlist({ token }: { token: string }) {
-  useEffect(() => remember(token), [token]);
+export function KeepShortlist({ token, partner }: { token: string; partner?: Partner }) {
+  useEffect(() => remember(token, partner), [token, partner]);
   return (
     <section className="flex flex-col gap-3 rounded-[20px] bg-paper-dim p-5 text-left">
       <p className="font-display text-xl">Keep your Shortlist</p>
@@ -143,7 +143,8 @@ export default function ShortlistPage({
               ))}
             </ol>
             <p className="mt-8 text-sm text-ink-soft" suppressHydrationWarning>
-              {shown.length} {shown.length === 1 ? "name" : "names"} you both love · since{" "}
+              {shown.length === entries.length ? shown.length : `${shown.length} of ${entries.length}`}{" "}
+              {entries.length === 1 ? "name" : "names"} you both love · since{" "}
               {day(shown[0].matchedAt)}
             </p>
           </>

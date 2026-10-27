@@ -1,6 +1,7 @@
 import { nanoid } from "nanoid";
 import { buildSessionDeck, DEFAULT_DECK_ID } from "./decks";
 import type { DeckGender } from "./deck-manifest";
+import { logEvent } from "./events";
 import { getStore, SESSION_TTL_S } from "./store";
 import { createShortlist, landMatches, mintPartner, partnerToken } from "./shortlist";
 import {
@@ -18,28 +19,14 @@ import type {
   Swipe,
 } from "./types";
 
+export { logEvent };
+
 type TokenRecord = { id: string; role: Role };
 
 const tokKey = (t: string) => `tok:${t}`;
 const metaKey = (id: string) => `sess:${id}:meta`;
 const swipesKey = (id: string, role: Role, round: 1 | 2) =>
   round === 1 ? `sess:${id}:swipes:${role}` : `sess:${id}:r2:${role}`;
-
-export async function logEvent(
-  sessionId: string,
-  event: EventName,
-  role?: Role,
-  extra?: Record<string, unknown>,
-) {
-  // Durable key, no TTL — slow recruitment must never delete the kill metric.
-  await getStore().append("events:log", {
-    session: sessionId,
-    event,
-    role: role ?? null,
-    ts: Date.now(),
-    ...extra,
-  });
-}
 
 export async function createSession(
   deckIds: string | string[] = DEFAULT_DECK_ID,
@@ -210,6 +197,7 @@ export async function getReveal(
     round2Available: matches.length === 0 && buildRound2Deck(meta.deck, a, b) !== null,
     round2Armed: meta.round2 !== null,
     shortlistToken: null,
+    shortlistPartner: null,
   };
   if (meta.round2) {
     const [r2a, r2b] = await Promise.all([
@@ -225,7 +213,10 @@ export async function getReveal(
   }
   if (meta.shortlist) {
     await landSessionMatches(meta); // heals a landing lost at completion
+    // Any live session token reaches its Partner's CURRENT link: reissue is for
+    // lost links, not compromised ones (accepted, #16).
     payload.shortlistToken = await partnerToken(meta.shortlist.id, meta.shortlist[role]);
+    payload.shortlistPartner = meta.shortlist[role];
   }
   if (logView) await logEvent(meta.id, "reveal_viewed", role);
   return payload;

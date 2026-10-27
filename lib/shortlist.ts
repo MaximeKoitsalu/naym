@@ -1,7 +1,8 @@
 import { nanoid } from "nanoid";
 import { getStore } from "./store";
 import { DECK_GENDERS, type DeckGender } from "./deck-manifest";
-import type { EventName, NameCard, Partner, Shortlist } from "./types";
+import { logEvent } from "./events";
+import { otherPartner, type NameCard, type Partner, type Shortlist } from "./types";
 
 /*
   The couple's lasting Shortlist. Every key here is durable (no TTL) — the
@@ -92,6 +93,8 @@ export async function setExpecting(token: string, expecting: DeckGender): Promis
   if (!rec) return false;
   const shortlist = await store.get<Shortlist>(shortlistKey(rec.shortlistId));
   if (!shortlist) return false;
+  // shortcut: read-modify-write on the Shortlist key, so a match landing at the
+  // same instant can be dropped (the next reveal view re-lands it); same fix as landMatches.
   shortlist.expecting = expecting;
   await store.set(shortlistKey(rec.shortlistId), shortlist);
   return true;
@@ -107,22 +110,19 @@ export async function reissuePartnerLink(token: string): Promise<string | null> 
   const rec = await store.get<PartnerRecord>(ptokKey(token));
   if (!rec) return null;
   const shortlist = await store.get<Shortlist>(shortlistKey(rec.shortlistId));
-  const other: Partner = rec.partner === 1 ? 2 : 1;
+  const other = otherPartner(rec.partner);
   const old = shortlist?.partners[other];
   if (!shortlist || !old) return null;
+  // shortcut: read-modify-write on the Shortlist key, so a match landing at the
+  // same instant can be dropped (the next reveal view re-lands it); same fix as landMatches.
   const fresh = nanoid(21);
   await store.set(ptokKey(fresh), { shortlistId: shortlist.id, partner: other } satisfies PartnerRecord);
   shortlist.partners[other] = fresh;
   await store.set(shortlistKey(shortlist.id), shortlist);
   await store.del(ptokKey(old));
-  // Durable, like every event. No session here — the Shortlist outlives them.
-  await store.append("events:log", {
-    session: null,
+  await logEvent(null, "shortlist_link_reissued", undefined, {
     shortlist: shortlist.id,
-    event: "shortlist_link_reissued" satisfies EventName,
-    role: null,
     partner: rec.partner,
-    ts: Date.now(),
   });
   return fresh;
 }

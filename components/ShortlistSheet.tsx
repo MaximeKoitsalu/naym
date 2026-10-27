@@ -2,9 +2,9 @@
 
 import { useEffect, useState } from "react";
 import type { DeckGender } from "@/lib/deck-manifest";
-import { forgetHolder } from "@/lib/shortlist-device";
+import { replaceHolder } from "@/lib/shortlist-device";
 import type { ShortlistFilter } from "@/lib/shortlist-filter";
-import type { Partner } from "@/lib/types";
+import { otherPartner, type Partner } from "@/lib/types";
 
 /*
   The Shortlist sheet behind "filter & links" (#18, variant C): the expecting
@@ -85,10 +85,9 @@ function FreshPartnerLink({ token, partner }: { token: string; partner: Partner 
     }).catch(() => null);
     const body = res?.ok ? await res.json() : null;
     if (body?.token) {
-      forgetHolder(partner === 1 ? 2 : 1); // a shared phone's copy of the old link is dead
+      replaceHolder(otherPartner(partner), body.token); // a shared phone keeps both links
       setFresh(body.token);
-    }
-    else setStep(res?.status === 404 ? "none" : "confirm");
+    } else setStep(res?.status === 404 ? "none" : "confirm");
   }
   if (fresh) {
     return (

@@ -1,4 +1,4 @@
-import type { Partner } from "./types";
+import { otherPartner, type Partner } from "./types";
 
 /*
   Which Shortlist links this device remembers. LOCAL_KEY is the last link
@@ -14,7 +14,7 @@ const HOLDERS_KEY = "naym:shortlist:partners";
 // couples' links would pair them; key by Shortlist id if that ever happens.
 type Holders = Partial<Record<Partner, string>>;
 
-function holders(): Holders {
+function readHolders(): Holders {
   try {
     return JSON.parse(localStorage.getItem(HOLDERS_KEY) ?? "{}");
   } catch {
@@ -22,7 +22,7 @@ function holders(): Holders {
   }
 }
 
-function save(h: Holders) {
+function writeHolders(h: Holders) {
   try {
     localStorage.setItem(HOLDERS_KEY, JSON.stringify(h));
   } catch {
@@ -30,14 +30,14 @@ function save(h: Holders) {
   }
 }
 
-/** The last link opened here; `partner` is known on the Shortlist page, not the reveal. */
+/** The last link opened here, and — when `partner` is known — that Partner's own link. */
 export function remember(token: string, partner?: Partner) {
   try {
     localStorage.setItem(LOCAL_KEY, `/shortlist/${token}`);
   } catch {
     /* private mode — the link still works, it just isn't remembered */
   }
-  if (partner) save({ ...holders(), [partner]: token });
+  if (partner) writeHolders({ ...readHolders(), [partner]: token });
 }
 
 export function lastShortlist(): string | null {
@@ -50,12 +50,12 @@ export function lastShortlist(): string | null {
 
 /** The other Partner's link, when this device holds both. */
 export function otherHolder(partner: Partner): string | null {
-  return holders()[partner === 1 ? 2 : 1] ?? null;
+  return readHolders()[otherPartner(partner)] ?? null;
 }
 
-/** After a reissue the other's stored link no longer opens. */
-export function forgetHolder(partner: Partner) {
-  const h = holders();
-  delete h[partner];
-  save(h);
+/** After a reissue: a shared phone holding the dead link gets the fresh one instead. */
+export function replaceHolder(partner: Partner, fresh: string) {
+  const h = readHolders();
+  if (!h[partner]) return;
+  writeHolders({ ...h, [partner]: fresh });
 }
