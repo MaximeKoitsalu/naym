@@ -41,6 +41,11 @@ export const DECK_MANIFEST = [
 export const DECK_GENDERS = ["girl", "boy", "unsure"] as const;
 export type DeckGender = (typeof DECK_GENDERS)[number];
 
+/** The deck builder's default for a Shortlist's `expecting` (one seam for #24's type unification). */
+export function deckGenderFor(expecting: "girl" | "boy" | "not sure yet"): DeckGender {
+  return expecting === "not sure yet" ? "unsure" : expecting;
+}
+
 /** Cards available to a deck of `gender` across `ids` — unisex counts for every gender. */
 export function poolSize(ids: readonly string[], gender: DeckGender): number {
   return DECK_MANIFEST.filter((d) => ids.includes(d.id)).reduce(

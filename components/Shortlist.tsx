@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import type { Shortlist, ShortlistEntry } from "@/lib/types";
+import { deckGenderFor } from "@/lib/deck-manifest";
 
 /*
   The Shortlist page — variant C, "the list is the page" (#18): the names set
@@ -95,10 +96,13 @@ export default function ShortlistPage({
   token,
   expecting,
   entries,
+  deal = null,
 }: {
   token: string;
   expecting: Shortlist["expecting"];
   entries: ShortlistEntry[];
+  /** The latest dealt deck as this Partner sees it (getDealView). */
+  deal?: { mine: boolean; size: number; href: string } | null;
 }) {
   const [sheet, setSheet] = useState(false);
   useEffect(() => remember(token), [token]);
@@ -145,10 +149,27 @@ export default function ShortlistPage({
         links
       </button>
 
-      {/* No next-step button until #21: a link to / would mint a second Shortlist. */}
-      <p className="mt-8 text-center text-sm text-ink-soft">
-        New decks from here are coming soon.
-      </p>
+      <div className="fixed inset-x-0 bottom-0 mx-auto flex w-full max-w-[480px] flex-col gap-3 bg-paper px-6 pb-8 pt-4">
+        {deal && (
+          <Link
+            href={deal.href}
+            className="min-h-14 rounded-full bg-terra px-8 py-4 text-center text-lg font-medium text-paper"
+          >
+            {deal.mine
+              ? `Back to your ${deal.size} new names →`
+              : `Your partner dealt ${deal.size} new names →`}
+          </Link>
+        )}
+        {/* ?deal= makes the builder attach to THIS Shortlist instead of minting one. */}
+        <Link
+          href={`/?deal=${token}&gender=${deckGenderFor(expecting)}`}
+          className={`min-h-14 rounded-full px-8 py-4 text-center text-lg font-medium ${
+            deal ? "border border-ink-soft/25" : "bg-ink text-paper"
+          }`}
+        >
+          Deal a new deck →
+        </Link>
+      </div>
 
       {sheet && (
         <div

@@ -115,8 +115,9 @@ function dealOrder(
  *
  * `gender` filters the cards (unisex counts for both); "unsure" deals an even
  * girl/boy split. A pool smaller than `size` yields a smaller deck — the
- * picker disables those sizes, this is only the safety net.
+ * picker disables those sizes, and a dealt deck reports it (dealSession).
  *
+ * `exclude` drops the couple's Seen names before dealing — never refilled.
  * `rand` is injectable for deterministic tests.
  */
 export function buildSessionDeck(
@@ -124,12 +125,15 @@ export function buildSessionDeck(
   size: number = DEFAULT_DECK_SIZE,
   gender: DeckGender = "unsure",
   rand: () => number = Math.random,
+  exclude: ReadonlySet<string> = new Set(),
 ): DeckEntry | null {
   const unique = [...new Set(deckIds)];
   if (unique.length === 0) return null;
   const entries = unique.map((id) => getDeckEntry(id));
   if (entries.some((e) => e === null)) return null;
-  const decks = entries as DeckEntry[];
+  const decks = (entries as DeckEntry[]).map((d) =>
+    exclude.size ? { ...d, names: d.names.filter((c) => !exclude.has(c.id)) } : d,
+  );
   const target = clampSize(size);
 
   if (decks.length === 1) {
@@ -146,19 +150,27 @@ export function buildSessionDeck(
   const remainder = target - per * decks.length;
   const seen = new Set<string>();
   const picked: NameCard[] = [];
-  decks.forEach((deck, i) => {
+  const orders = decks.map((deck, i) => dealOrder(deck.names, gender, i % 2 === 1, rand));
+  orders.forEach((order, i) => {
     const take = per + (i < remainder ? 1 : 0);
     let taken = 0;
-    // shortcut: a deck short of its share isn't topped up from the others; fine
-    // while every deck has ~25 per gender, revisit if uneven decks arrive.
-    for (const card of dealOrder(deck.names, gender, i % 2 === 1, rand)) {
-      if (taken >= take) break;
+    while (taken < take && order.length) {
+      const card = order.shift()!;
       if (seen.has(card.id)) continue; // cross-deck id collision — keep first
       seen.add(card.id);
       picked.push(card);
       taken++;
     }
   });
+  // A deck short of its share (Seen names excluded) is topped up from the others.
+  for (const order of orders) {
+    for (const card of order) {
+      if (picked.length >= target) break;
+      if (seen.has(card.id)) continue;
+      seen.add(card.id);
+      picked.push(card);
+    }
+  }
 
   const names = shuffle(picked, rand);
   const labels = decks.map((d) => d.title.replace(/ deck$/, ""));

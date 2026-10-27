@@ -1,8 +1,18 @@
 import { nanoid } from "nanoid";
-import { buildSessionDeck, DEFAULT_DECK_ID } from "./decks";
-import type { DeckGender } from "./deck-manifest";
+import { buildSessionDeck, DEFAULT_DECK_ID, type DeckEntry } from "./decks";
+import { MIN_DECK_SIZE, type DeckGender } from "./deck-manifest";
 import { getStore, SESSION_TTL_S } from "./store";
-import { createShortlist, landMatches, mintPartner, partnerToken } from "./shortlist";
+import {
+  createShortlist,
+  getDeal,
+  getSeen,
+  landMatches,
+  markSeen,
+  mintPartner,
+  partnerToken,
+  recordDeal,
+  resolvePartner,
+} from "./shortlist";
 import {
   buildRound2Deck,
   guardSwipes,
@@ -12,6 +22,7 @@ import {
 import type {
   EventName,
   NameCard,
+  Partner,
   RevealPayload,
   Role,
   SessionMeta,
@@ -53,11 +64,18 @@ export async function createSession(
     gender,
   );
   if (!entry) return null; // unknown deck or empty pick — route turns this into a 400
+  const shortlist = await createShortlist(); // mints Partner 1
+  return openSession(entry, { id: shortlist.id, A: 1, B: 2 });
+}
+
+async function openSession(
+  entry: DeckEntry,
+  shortlist: NonNullable<SessionMeta["shortlist"]>,
+): Promise<{ creatorToken: string; inviteToken: string; sessionId: string }> {
   const store = getStore();
   const id = nanoid(12);
   const creatorToken = nanoid(21);
   const inviteToken = nanoid(21);
-  const shortlist = await createShortlist(); // mints Partner 1
   const meta: SessionMeta & { inviteToken: string } = {
     id,
     deckId: entry.deckId,
@@ -68,14 +86,65 @@ export async function createSession(
     createdAt: Date.now(),
     bStartedAt: null,
     round2: null,
-    shortlist: { id: shortlist.id, A: 1, B: 2 },
+    shortlist,
     inviteToken,
   };
   await store.set(metaKey(id), meta, SESSION_TTL_S);
   await store.set(tokKey(creatorToken), { id, role: "A" } satisfies TokenRecord, SESSION_TTL_S);
   await store.set(tokKey(inviteToken), { id, role: "B" } satisfies TokenRecord, SESSION_TTL_S);
   await logEvent(id, "session_created");
-  return { creatorToken, sessionId: id };
+  return { creatorToken, inviteToken, sessionId: id };
+}
+
+/**
+ * Either Partner deals a new deck from their Shortlist: the dealer is role A,
+ * the other Partner role B, on the SAME Shortlist. Seen names never return.
+ * Fewer than MIN_DECK_SIZE unseen names → `{ dry }`, nothing is created.
+ */
+export async function dealSession(
+  partnerTok: string,
+  deckIds: string[],
+  size?: number,
+  gender: DeckGender = "unsure",
+): Promise<{ creatorToken: string; size: number } | { dry: number } | null> {
+  const partner = await resolvePartner(partnerTok);
+  if (!partner) return null;
+  const seen = await getSeen(partner.shortlistId);
+  const entry = buildSessionDeck(deckIds, size, gender, Math.random, seen);
+  if (!entry) return null;
+  if (entry.names.length < MIN_DECK_SIZE) return { dry: entry.names.length };
+  const other: Partner = partner.partner === 1 ? 2 : 1;
+  const { creatorToken, inviteToken } = await openSession(entry, {
+    id: partner.shortlistId,
+    A: partner.partner,
+    B: other,
+  });
+  await recordDeal(partner.shortlistId, { dealer: partner.partner, creatorToken, inviteToken });
+  return { creatorToken, size: entry.names.length };
+}
+
+/**
+ * The latest dealt deck as ONE Partner's Shortlist shows it: the dealer gets
+ * their own A link; the other Partner sees it only once the dealer has
+ * finished, with their own B link (B binds on the Start tap, not here).
+ * Never carries the other Partner's session token. Null once both finished.
+ */
+export async function getDealView(
+  partnerTok: string,
+): Promise<{ mine: boolean; size: number; href: string } | null> {
+  const partner = await resolvePartner(partnerTok);
+  if (!partner) return null;
+  const deal = await getDeal(partner.shortlistId);
+  if (!deal) return null;
+  const resolved = await resolveToken(deal.creatorToken);
+  if (!resolved) return null; // expired
+  const { meta } = resolved;
+  const [a, b] = await Promise.all([getSwipes(meta.id, "A"), getSwipes(meta.id, "B")]);
+  const aDone = isComplete(meta.deck, a);
+  if (aDone && isComplete(meta.deck, b)) return null;
+  const size = meta.deck.length;
+  if (partner.partner === deal.dealer) return { mine: true, size, href: `/s/${deal.creatorToken}` };
+  return aDone ? { mine: false, size, href: `/s/${deal.inviteToken}` } : null;
 }
 
 export async function resolveToken(token: string): Promise<
@@ -168,13 +237,15 @@ export async function armRound2(token: string): Promise<boolean> {
 }
 
 /**
- * WRITES: copies the server-computed matches (round 1, and round 2 once both
+ * WRITES: marks the deck Seen and copies the server-computed matches (round 1, and round 2 once both
  * finish it) onto the couple's Shortlist. Idempotent; a no-op until both are done.
  */
 export async function landSessionMatches(meta: SessionMeta): Promise<void> {
   if (!meta.shortlist) return;
   const [a, b] = await Promise.all([getSwipes(meta.id, "A"), getSwipes(meta.id, "B")]);
   if (!isComplete(meta.deck, a) || !isComplete(meta.deck, b)) return;
+  // Both finished → every card is Seen, liked or not (direction-blind, so it leaks nothing).
+  await markSeen(meta.shortlist.id, meta.deck.map((c) => c.id));
   const cards = intersection(meta.deck, a, b);
   if (meta.round2) {
     const [r2a, r2b] = await Promise.all([getSwipes(meta.id, "A", 2), getSwipes(meta.id, "B", 2)]);

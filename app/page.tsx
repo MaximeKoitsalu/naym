@@ -1,8 +1,9 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
+  DECK_GENDERS,
   DECK_MANIFEST,
   DECK_SIZE_PRESETS,
   DEFAULT_DECK_SIZE,
@@ -24,6 +25,16 @@ export default function Landing() {
   const [picked, setPicked] = useState<DeckChoice[]>(["nordic-v1"]);
   const [size, setSize] = useState<number>(DEFAULT_DECK_SIZE);
   const [gender, setGender] = useState<DeckGender>("unsure");
+  // Dealing from a Shortlist (?deal=<own Shortlist token>): attach to it, Seen names excluded.
+  const [deal, setDeal] = useState<string | null>(null);
+  const [notice, setNotice] = useState<{ text: string; href?: string } | null>(null);
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search);
+    setDeal(q.get("deal"));
+    const g = DECK_GENDERS.find((x) => x === q.get("gender"));
+    if (g) setGender(g);
+  }, []);
+  useEffect(() => setNotice(null), [picked, size, gender]);
   const pool = poolSize(picked, gender);
   // Never deal a deck the pool can't fill: fall back to the largest size that fits.
   const fits = DECK_SIZE_PRESETS.filter((n) => n <= pool);
@@ -42,10 +53,24 @@ export default function Landing() {
       const res = await fetch("/api/session", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ deckIds: picked, size: dealt, gender }),
+        body: JSON.stringify({ deckIds: picked, size: dealt, gender, shortlistToken: deal ?? undefined }),
       });
-      const { creatorToken } = await res.json();
-      router.push(`/s/${creatorToken}`);
+      const json = await res.json();
+      if (res.status === 409) {
+        setNotice({ text: `Only ${json.left} names here you haven't seen together — add a deck.` });
+        setBusy(false);
+        return;
+      }
+      if (json.size < dealt) {
+        // Seen names never come back, so the pool dealt a smaller deck — say so.
+        setNotice({
+          text: `Only ${json.size} names here you haven't seen together, so this deck has ${json.size}.`,
+          href: `/s/${json.creatorToken}`,
+        });
+        setBusy(false);
+        return;
+      }
+      router.push(`/s/${json.creatorToken}`);
     } catch {
       setBusy(false);
     }
@@ -160,13 +185,27 @@ export default function Landing() {
         </p>
       </fieldset>
 
-      <button
-        onClick={start}
-        disabled={busy || picked.length === 0}
-        className="min-h-14 rounded-full bg-ink px-8 text-lg font-medium text-paper disabled:opacity-60"
-      >
-        {busy ? "Shuffling the deck…" : "Start swiping"}
-      </button>
+      {notice && (
+        <p className="text-sm text-terra-deep" role="status">
+          {notice.text}
+        </p>
+      )}
+      {notice?.href ? (
+        <a
+          href={notice.href}
+          className="min-h-14 rounded-full bg-ink px-8 py-4 text-center text-lg font-medium text-paper"
+        >
+          Start swiping
+        </a>
+      ) : (
+        <button
+          onClick={start}
+          disabled={busy || picked.length === 0}
+          className="min-h-14 rounded-full bg-ink px-8 text-lg font-medium text-paper disabled:opacity-60"
+        >
+          {busy ? "Shuffling the deck…" : "Start swiping"}
+        </button>
+      )}
       <p className="text-sm text-ink-soft">
         No account. No download. About 5 minutes each.
       </p>

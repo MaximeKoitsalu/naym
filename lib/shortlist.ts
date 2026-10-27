@@ -80,3 +80,44 @@ export async function getShortlistView(token: string) {
     entries: shortlist.entries,
   };
 }
+
+/* ── Dealing (#21) ─────────────────────────────────────────────────────── */
+
+const seenKey = (id: string) => `shortlist:${id}:seen`;
+const dealKey = (id: string) => `shortlist:${id}:deal`;
+
+/** The latest deck dealt from this Shortlist. Tokens here never serialize as-is. */
+export type DealRecord = {
+  dealer: Partner;
+  creatorToken: string;
+  inviteToken: string;
+};
+
+export async function resolvePartner(token: string): Promise<PartnerRecord | null> {
+  return getStore().get<PartnerRecord>(ptokKey(token));
+}
+
+/** Seen: every name in a session both partners completed, however they swiped it. */
+export async function getSeen(id: string): Promise<Set<string>> {
+  return new Set((await getStore().get<string[]>(seenKey(id))) ?? []);
+}
+
+/**
+ * Idempotent. shortcut: read-modify-write like landMatches — two sessions
+ * completing at the same instant can drop one; its next reveal view re-marks it.
+ */
+export async function markSeen(id: string, cardIds: string[]): Promise<void> {
+  const seen = await getSeen(id);
+  if (cardIds.every((c) => seen.has(c))) return;
+  for (const c of cardIds) seen.add(c);
+  await getStore().set(seenKey(id), [...seen]);
+}
+
+/** A new deal replaces the last one — an unfinished deck is simply abandoned. */
+export async function recordDeal(id: string, deal: DealRecord): Promise<void> {
+  await getStore().set(dealKey(id), deal);
+}
+
+export async function getDeal(id: string): Promise<DealRecord | null> {
+  return getStore().get<DealRecord>(dealKey(id));
+}
