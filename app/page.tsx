@@ -31,6 +31,8 @@ export default function Landing() {
   const [deal, setDeal] = useState<string | null>(null);
   // The couple's unseen names per deck, carried on the deal link — sizes they can't fill are disabled.
   const [unseen, setUnseen] = useState<Record<string, GenderCounts> | undefined>();
+  // Their sample names with Seen ones left out, carried on the same link.
+  const [samples, setSamples] = useState<Record<string, Record<DeckGender, string>> | undefined>();
   // Queued wishes join the dealt deck whatever the decks or gender, so they count toward the pool.
   const [wishes, setWishes] = useState(0);
   const [notice, setNotice] = useState<string | null>(null);
@@ -40,6 +42,7 @@ export default function Landing() {
     setWishes(Math.max(0, Math.min(MAX_WISHES, Number(q.get("wishes")) || 0)));
     try {
       setUnseen(JSON.parse(q.get("pool") ?? "null") ?? undefined);
+      setSamples(JSON.parse(q.get("samples") ?? "null") ?? undefined);
     } catch {
       /* malformed link — fall back to the full manifest; the server still refuses Seen names */
     }
@@ -97,7 +100,8 @@ export default function Landing() {
           without saying one out loud.
         </h2>
         <p className="text-base leading-relaxed text-ink-soft">
-          Swipe {dealt} names in secret. Send your partner one link. Neither of
+          Swipe {dealt} names in secret.{" "}
+          {deal ? "The deck shows up on your partner's Shortlist." : "Send your partner one link."} Neither of
           you sees anything until you&apos;ve both finished — then one reveal
           shows only the names you both chose.
         </p>
@@ -134,6 +138,8 @@ export default function Landing() {
         </legend>
         {DECK_MANIFEST.map((d) => {
           const active = picked.includes(d.id);
+          // Dealing: Seen sample names are left out; none left → no label.
+          const sample = samples?.[d.id]?.[gender] ?? d.sample[gender];
           return (
             <button
               key={d.id}
@@ -151,7 +157,7 @@ export default function Landing() {
               >
                 {d.label}
               </span>
-              <span className="text-sm text-ink-soft">{d.sample[gender]}</span>
+              {sample && <span className="text-sm text-ink-soft">{sample}</span>}
             </button>
           );
         })}
