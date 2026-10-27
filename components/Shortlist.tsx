@@ -4,25 +4,14 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import type { DeckGender } from "@/lib/deck-manifest";
 import { defaultFilter, visibleEntries } from "@/lib/shortlist-filter";
-import type { ShortlistEntry } from "@/lib/types";
+import { lastShortlist, otherHolder, remember } from "@/lib/shortlist-device";
+import type { Partner, ShortlistEntry } from "@/lib/types";
 import ShortlistSheet, { CopyLinkButton } from "./ShortlistSheet";
 
 /*
   The Shortlist page — variant C, "the list is the page" (#18): the names set
   like the keepsake, one floating next-step button, the links in a sheet.
 */
-
-// shortcut: one remembered link per device, so on a shared phone the last
-// partner to open theirs wins; split per partner with same-device mode (#26).
-const LOCAL_KEY = "naym:shortlist";
-
-function remember(token: string) {
-  try {
-    localStorage.setItem(LOCAL_KEY, `/shortlist/${token}`);
-  } catch {
-    /* private mode — the link still works, it just isn't remembered */
-  }
-}
 
 /** On the reveal: this partner's OWN link only. */
 export function KeepShortlist({ token }: { token: string }) {
@@ -49,11 +38,7 @@ export function KeepShortlist({ token }: { token: string }) {
 export function BackToShortlist() {
   const [href, setHref] = useState<string | null>(null);
   useEffect(() => {
-    try {
-      setHref(localStorage.getItem(LOCAL_KEY));
-    } catch {
-      /* private mode */
-    }
+    setHref(lastShortlist());
   }, []);
   if (!href) return null;
   return (
@@ -75,12 +60,33 @@ const forWhom: Record<DeckGender, string> = {
 const day = (ts: number) =>
   new Date(ts).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 
+/**
+ * Same-device mode: when this phone holds both Partners' links. Passing it
+ * over swaps the URL — the route keys the page by token, so nothing of the
+ * holder's state survives into the other partner's view.
+ */
+function HolderStrip({ partner }: { partner: Partner }) {
+  const [other, setOther] = useState<string | null>(null);
+  useEffect(() => setOther(otherHolder(partner)), [partner]);
+  if (!other) return null;
+  return (
+    <p className="mx-6 mt-4 text-center text-sm text-ink-soft">
+      Holding the phone: <b className="text-ink">Partner {partner}</b> ·{" "}
+      <Link replace href={`/shortlist/${other}`} className="underline">
+        pass it over
+      </Link>
+    </p>
+  );
+}
+
 export default function ShortlistPage({
   token,
+  partner,
   expecting: initialExpecting,
   entries,
 }: {
   token: string;
+  partner: Partner;
   expecting: DeckGender;
   entries: ShortlistEntry[];
 }) {
@@ -88,7 +94,7 @@ export default function ShortlistPage({
   const [expecting, setExpecting] = useState(initialExpecting);
   const [filter, setFilter] = useState(() => defaultFilter(initialExpecting));
   const shown = visibleEntries(entries, filter);
-  useEffect(() => remember(token), [token]);
+  useEffect(() => remember(token, partner), [token, partner]);
 
   function changeExpecting(g: DeckGender) {
     // Optimistic: the filter jumps to the new gender; a failed save reverts both.
@@ -111,6 +117,7 @@ export default function ShortlistPage({
 
   return (
     <main className="flex flex-1 flex-col pb-40">
+      <HolderStrip partner={partner} />
       <section className="mx-6 mt-6 flex flex-col items-center rounded-[20px] bg-paper-dim px-6 py-10 text-center">
         <h1 className="text-xs uppercase tracking-widest text-ink-soft">
           for our {forWhom[expecting]}
@@ -157,6 +164,7 @@ export default function ShortlistPage({
       {sheet && (
         <ShortlistSheet
           token={token}
+          partner={partner}
           expecting={expecting}
           onExpecting={changeExpecting}
           filter={filter}

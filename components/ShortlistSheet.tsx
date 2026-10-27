@@ -2,7 +2,9 @@
 
 import { useEffect, useState } from "react";
 import type { DeckGender } from "@/lib/deck-manifest";
+import { forgetHolder } from "@/lib/shortlist-device";
 import type { ShortlistFilter } from "@/lib/shortlist-filter";
+import type { Partner } from "@/lib/types";
 
 /*
   The Shortlist sheet behind "filter & links" (#18, variant C): the expecting
@@ -71,7 +73,7 @@ function Choice<T extends string>({
 }
 
 /** Revokes the other partner's lost link; the fresh one is shown here only. */
-function FreshPartnerLink({ token }: { token: string }) {
+function FreshPartnerLink({ token, partner }: { token: string; partner: Partner }) {
   const [step, setStep] = useState<"idle" | "confirm" | "busy" | "none">("idle");
   const [fresh, setFresh] = useState<string | null>(null);
   async function reissue() {
@@ -82,7 +84,10 @@ function FreshPartnerLink({ token }: { token: string }) {
       body: JSON.stringify({ token }),
     }).catch(() => null);
     const body = res?.ok ? await res.json() : null;
-    if (body?.token) setFresh(body.token);
+    if (body?.token) {
+      forgetHolder(partner === 1 ? 2 : 1); // a shared phone's copy of the old link is dead
+      setFresh(body.token);
+    }
     else setStep(res?.status === 404 ? "none" : "confirm");
   }
   if (fresh) {
@@ -135,6 +140,7 @@ const FILTER_OPTIONS: { value: ShortlistFilter; label: string }[] = [
 
 export default function ShortlistSheet({
   token,
+  partner,
   expecting,
   onExpecting,
   filter,
@@ -142,6 +148,7 @@ export default function ShortlistSheet({
   onClose,
 }: {
   token: string;
+  partner: Partner;
   expecting: DeckGender;
   onExpecting: (g: DeckGender) => void;
   filter: ShortlistFilter;
@@ -169,7 +176,7 @@ export default function ShortlistSheet({
           This link is yours alone. Your partner has their own.
         </p>
         <CopyLinkButton token={token} autoFocus />
-        <FreshPartnerLink token={token} />
+        <FreshPartnerLink token={token} partner={partner} />
         <button onClick={onClose} className="min-h-11 w-full text-sm text-ink-soft underline">
           close
         </button>

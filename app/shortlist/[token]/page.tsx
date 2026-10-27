@@ -26,5 +26,14 @@ export default async function ShortlistRoute({
       </main>
     );
   }
-  return <ShortlistPage token={token} expecting={view.expecting} entries={view.entries} />;
+  // Keyed by token: passing a shared phone over remounts, carrying no state across.
+  return (
+    <ShortlistPage
+      key={token}
+      token={token}
+      partner={view.partner}
+      expecting={view.expecting}
+      entries={view.entries}
+    />
+  );
 }

@@ -149,6 +149,25 @@ test("full ritual: A swipes → handoff → B swipes blind → both reveals matc
     expect(body).not.toContain("Saga");
     expect(body).not.toContain("Leif");
   }
+
+  // Shared phone (#26): once A's context has opened both links, the strip
+  // passes the phone over to the other link.
+  await a.page.goto(bShortlist);
+  await expect(a.page.getByText("Holding the phone:")).toContainText("Partner 2");
+  await a.page.getByRole("link", { name: "pass it over" }).click();
+  await a.page.waitForURL(`**${aShortlist}`);
+  await expect(a.page.getByText("Holding the phone:")).toContainText("Partner 1");
+
+  // Fresh link (#25): A revokes B's link; B's old URL stops opening, A's still works.
+  await a.page.getByRole("button", { name: "filter & links" }).click();
+  await a.page.getByRole("button", { name: "Send my partner a fresh link" }).click();
+  await a.page.getByRole("button", { name: "Make a fresh link for my partner" }).click();
+  await expect(a.page.getByText("Their old link no longer opens.")).toBeVisible();
+  await b.page.goto(bShortlist);
+  await expect(b.page.getByText("This Shortlist link doesn't open.")).toBeVisible();
+  await a.page.goto(aShortlist);
+  await expect(a.page.getByText("Astrid", { exact: true })).toBeVisible();
+  await expect(a.page.getByText("Holding the phone:")).toBeHidden(); // the dead copy is forgotten
 });
 
 test("resume: killing the tab mid-deck resumes at the same card", async ({ browser }) => {
