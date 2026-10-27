@@ -1,14 +1,16 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
+  DECK_GENDERS,
   DECK_MANIFEST,
   DECK_SIZE_PRESETS,
   DEFAULT_DECK_SIZE,
   poolSize,
   type DeckChoice,
   type DeckGender,
+  type GenderCounts,
 } from "@/lib/deck-manifest";
 import { BackToShortlist } from "@/components/Shortlist";
 
@@ -24,7 +26,24 @@ export default function Landing() {
   const [picked, setPicked] = useState<DeckChoice[]>(["nordic-v1"]);
   const [size, setSize] = useState<number>(DEFAULT_DECK_SIZE);
   const [gender, setGender] = useState<DeckGender>("unsure");
-  const pool = poolSize(picked, gender);
+  // Dealing from a Shortlist (?deal=<own Shortlist token>): attach to it, Seen names excluded.
+  const [deal, setDeal] = useState<string | null>(null);
+  // The couple's unseen names per deck, carried on the deal link — sizes they can't fill are disabled.
+  const [unseen, setUnseen] = useState<Record<string, GenderCounts> | undefined>();
+  const [notice, setNotice] = useState<string | null>(null);
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search);
+    setDeal(q.get("deal"));
+    try {
+      setUnseen(JSON.parse(q.get("pool") ?? "null") ?? undefined);
+    } catch {
+      /* malformed link — fall back to the full manifest; the server still refuses Seen names */
+    }
+    const g = DECK_GENDERS.find((x) => x === q.get("gender"));
+    if (g) setGender(g);
+  }, []);
+  useEffect(() => setNotice(null), [picked, size, gender]);
+  const pool = poolSize(picked, gender, unseen);
   // Never deal a deck the pool can't fill: fall back to the largest size that fits.
   const fits = DECK_SIZE_PRESETS.filter((n) => n <= pool);
   const dealt = size <= pool ? size : (fits.at(-1) ?? size);
@@ -42,10 +61,19 @@ export default function Landing() {
       const res = await fetch("/api/session", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ deckIds: picked, size: dealt, gender }),
+        body: JSON.stringify({ deckIds: picked, size: dealt, gender, shortlistToken: deal ?? undefined }),
       });
-      const { creatorToken } = await res.json();
-      router.push(`/s/${creatorToken}`);
+      const json = await res.json();
+      if (res.status === 409) {
+        setNotice(
+          json.left === undefined
+            ? "Finish your current deck first."
+            : `Only ${json.left} names here you haven't seen together — add a deck for more.`,
+        );
+        setBusy(false);
+        return;
+      }
+      router.push(`/s/${json.creatorToken}`);
     } catch {
       setBusy(false);
     }
@@ -155,14 +183,21 @@ export default function Landing() {
         </div>
         <p className="min-h-5 text-sm text-ink-soft" aria-live="polite">
           {picked.length > 0 && DECK_SIZE_PRESETS.some((n) => n > pool)
-            ? "add a deck for more"
+            ? deal
+              ? `${pool} names here you haven't seen together — add a deck for more`
+              : "add a deck for more"
             : ""}
         </p>
       </fieldset>
 
+      {notice && (
+        <p className="text-sm text-terra-deep" role="status">
+          {notice}
+        </p>
+      )}
       <button
         onClick={start}
-        disabled={busy || picked.length === 0}
+        disabled={busy || fits.length === 0}
         className="min-h-14 rounded-full bg-ink px-8 text-lg font-medium text-paper disabled:opacity-60"
       >
         {busy ? "Shuffling the deck…" : "Start swiping"}

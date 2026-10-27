@@ -1,6 +1,8 @@
 import Link from "next/link";
 import ShortlistPage from "@/components/Shortlist";
-import { getShortlistView } from "@/lib/shortlist";
+import { getSeen, getShortlistView, resolvePartner } from "@/lib/shortlist";
+import { unseenCounts } from "@/lib/decks";
+import { getDealView } from "@/lib/session";
 
 export default async function ShortlistRoute({
   params,
@@ -26,5 +28,13 @@ export default async function ShortlistRoute({
       </main>
     );
   }
-  return <ShortlistPage token={token} expecting={view.expecting} entries={view.entries} />;
+  return (
+    <ShortlistPage
+      token={token}
+      expecting={view.expecting}
+      entries={view.entries}
+      deal={await getDealView(token)}
+      unseen={unseenCounts(await getSeen((await resolvePartner(token))!.shortlistId))}
+    />
+  );
 }

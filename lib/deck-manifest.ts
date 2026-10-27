@@ -1,3 +1,5 @@
+import type { Shortlist } from "./types";
+
 /*
   Client-safe deck manifest for the origin picker — labels, per-gender sample
   names and per-gender card counts only, so the landing bundle never carries
@@ -41,13 +43,26 @@ export const DECK_MANIFEST = [
 export const DECK_GENDERS = ["girl", "boy", "unsure"] as const;
 export type DeckGender = (typeof DECK_GENDERS)[number];
 
-/** Cards available to a deck of `gender` across `ids` — unisex counts for every gender. */
-export function poolSize(ids: readonly string[], gender: DeckGender): number {
-  return DECK_MANIFEST.filter((d) => ids.includes(d.id)).reduce(
-    (sum, { count: c }) =>
-      sum + c.unisex + (gender === "unsure" ? c.girl + c.boy : c[gender]),
-    0,
-  );
+/** The deck builder's default for a Shortlist's `expecting` (one seam for #24's type unification). */
+export function deckGenderFor(expecting: Shortlist["expecting"]): DeckGender {
+  return expecting === "not sure yet" ? "unsure" : expecting;
+}
+
+export type GenderCounts = { girl: number; boy: number; unisex: number };
+
+/**
+ * Cards available to a deck of `gender` across `ids` — unisex counts for every
+ * gender. `counts` overrides the manifest per deck (a dealt deck's unseen pool).
+ */
+export function poolSize(
+  ids: readonly string[],
+  gender: DeckGender,
+  counts?: Record<string, GenderCounts>,
+): number {
+  return DECK_MANIFEST.filter((d) => ids.includes(d.id)).reduce((sum, d) => {
+    const c = counts?.[d.id] ?? d.count;
+    return sum + c.unisex + (gender === "unsure" ? c.girl + c.boy : c[gender]);
+  }, 0);
 }
 
 export type DeckChoice = (typeof DECK_MANIFEST)[number]["id"];

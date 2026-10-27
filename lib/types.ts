@@ -97,3 +97,13 @@ export type Shortlist = {
   expecting: "girl" | "boy" | "not sure yet";
   entries: ShortlistEntry[];
 };
+
+/** A live dealt deck as one Partner's Shortlist shows it (getDealView). */
+export type DealView = {
+  mine: boolean;
+  size: number;
+  /** This Partner's own session link; null while the dealer is still swiping. */
+  href: string | null;
+  /** False while the deck is live and this Partner may not replace it. */
+  canDeal: boolean;
+};
