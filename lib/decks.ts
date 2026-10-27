@@ -6,7 +6,12 @@ import italian from "@/data/decks/italian.json";
 import french from "@/data/decks/french.json";
 import type { NameCard } from "./types";
 import { shuffle } from "./reveal";
-import { DEFAULT_DECK_SIZE, MAX_DECK_SIZE, MIN_DECK_SIZE } from "./deck-manifest";
+import {
+  DEFAULT_DECK_SIZE,
+  MAX_DECK_SIZE,
+  MIN_DECK_SIZE,
+  type DeckGender,
+} from "./deck-manifest";
 
 /*
   Deck registry (server-side — full deck data).
@@ -24,7 +29,8 @@ export type DeckEntry = {
   version: string;
 };
 
-const FILES: DeckFile[] = [nordic, greek, german, italian, french];
+// JSON imports widen `gender` to string; test/decks.test.ts checks every tag.
+const FILES = [nordic, greek, german, italian, french] as DeckFile[];
 
 const REGISTRY = new Map<string, DeckEntry>(
   FILES.map((f) => [
@@ -55,12 +61,47 @@ function clampSize(size: number): number {
 }
 
 /**
+ * A deck's cards in dealing order for `gender`. Girl/boy: that gender plus
+ * unisex, shuffled. Not sure yet: girls and boys alternate (starting side set
+ * by `boyFirst`, so blends stay even overall), and a side that runs short is
+ * filled from unisex before the other side takes the surplus.
+ */
+function dealOrder(
+  names: NameCard[],
+  gender: DeckGender,
+  boyFirst: boolean,
+  rand: () => number,
+): NameCard[] {
+  if (gender !== "unsure") {
+    return shuffle(names.filter((c) => c.gender === gender || c.gender === "unisex"), rand);
+  }
+  const of = (g: NameCard["gender"]) => shuffle(names.filter((c) => c.gender === g), rand);
+  const girls = of("girl");
+  const boys = of("boy");
+  const unisex = of("unisex");
+  const sides = boyFirst ? [boys, girls] : [girls, boys];
+  const out: NameCard[] = [];
+  while (girls.length || boys.length || unisex.length) {
+    for (const side of sides) {
+      const card = side.shift() ?? unisex.shift();
+      if (card) out.push(card);
+    }
+  }
+  return out;
+}
+
+/**
  * Build the deck a session will pin. One origin → that deck verbatim when
- * `size` is the full MAX_DECK_SIZE, otherwise a shuffled subset of it.
+ * `size` is the full MAX_DECK_SIZE and gender is "unsure", otherwise a
+ * shuffled subset of it.
  * Several origins → a BLEND: an even stratified sample of `size` across the
  * chosen decks (floor split, remainder to the earliest picks), shuffled,
  * deduped by id. The finite-deck premise survives — both partners still
  * swipe the same cards, whatever the mix or size.
+ *
+ * `gender` filters the cards (unisex counts for both); "unsure" deals an even
+ * girl/boy split. A pool smaller than `size` yields a smaller deck — the
+ * picker disables those sizes, this is only the safety net.
  *
  * `rand` is injectable for deterministic tests.
  */
@@ -68,6 +109,7 @@ export function buildSessionDeck(
   deckIds: string[],
   size: number = DEFAULT_DECK_SIZE,
   rand: () => number = Math.random,
+  gender: DeckGender = "unsure",
 ): DeckEntry | null {
   const unique = [...new Set(deckIds)];
   if (unique.length === 0) return null;
@@ -78,8 +120,12 @@ export function buildSessionDeck(
 
   if (decks.length === 1) {
     const deck = decks[0];
-    if (target >= deck.names.length) return deck; // full deck — verbatim, unshuffled
-    return { ...deck, names: shuffle(deck.names, rand).slice(0, target) };
+    // full deck — verbatim, unshuffled
+    if (gender === "unsure" && target >= deck.names.length) return deck;
+    return {
+      ...deck,
+      names: shuffle(dealOrder(deck.names, gender, rand() < 0.5, rand).slice(0, target), rand),
+    };
   }
 
   const per = Math.floor(target / decks.length);
@@ -89,7 +135,9 @@ export function buildSessionDeck(
   decks.forEach((deck, i) => {
     const take = per + (i < remainder ? 1 : 0);
     let taken = 0;
-    for (const card of shuffle(deck.names, rand)) {
+    // shortcut: a deck short of its share isn't topped up from the others; fine
+    // while every deck has ~25 per gender, revisit if uneven decks arrive.
+    for (const card of dealOrder(deck.names, gender, i % 2 === 1, rand)) {
       if (taken >= take) break;
       if (seen.has(card.id)) continue; // cross-deck id collision — keep first
       seen.add(card.id);

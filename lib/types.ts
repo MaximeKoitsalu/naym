@@ -4,6 +4,8 @@ export type NameCard = {
   say: string;
   origin: string;
   meaning: string;
+  /** As the name is used in this card's culture; unisex fits every deck gender. */
+  gender: "girl" | "boy" | "unisex";
 };
 
 export type Swipe = { id: string; liked: boolean };

@@ -6,14 +6,27 @@ import {
   DECK_MANIFEST,
   DECK_SIZE_PRESETS,
   DEFAULT_DECK_SIZE,
+  poolSize,
   type DeckChoice,
+  type DeckGender,
 } from "@/lib/deck-manifest";
+
+const GENDER_OPTIONS: { value: DeckGender; label: string }[] = [
+  { value: "girl", label: "a girl" },
+  { value: "boy", label: "a boy" },
+  { value: "unsure", label: "not sure yet" },
+];
 
 export default function Landing() {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [picked, setPicked] = useState<DeckChoice[]>(["nordic-v1"]);
   const [size, setSize] = useState<number>(DEFAULT_DECK_SIZE);
+  const [gender, setGender] = useState<DeckGender>("unsure");
+  const pool = poolSize(picked, gender);
+  // Never deal a deck the pool can't fill: fall back to the largest size that fits.
+  const fits = DECK_SIZE_PRESETS.filter((n) => n <= pool);
+  const dealt = size <= pool ? size : (fits.at(-1) ?? size);
 
   function toggle(id: DeckChoice) {
     setPicked((prev) =>
@@ -28,7 +41,7 @@ export default function Landing() {
       const res = await fetch("/api/session", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ deckIds: picked, size }),
+        body: JSON.stringify({ deckIds: picked, size: dealt, gender }),
       });
       const { creatorToken } = await res.json();
       router.push(`/s/${creatorToken}`);
@@ -48,11 +61,35 @@ export default function Landing() {
           without saying one out loud.
         </h2>
         <p className="text-base leading-relaxed text-ink-soft">
-          Swipe {size} names in secret. Send your partner one link. Neither of
+          Swipe {dealt} names in secret. Send your partner one link. Neither of
           you sees anything until you&apos;ve both finished — then one reveal
           shows only the names you both chose.
         </p>
       </div>
+
+      <fieldset className="flex flex-col gap-2.5">
+        <legend className="pb-1 text-sm text-ink-soft">who are we naming?</legend>
+        <div className="flex gap-2">
+          {GENDER_OPTIONS.map((g) => {
+            const active = g.value === gender;
+            return (
+              <button
+                key={g.value}
+                type="button"
+                onClick={() => setGender(g.value)}
+                aria-pressed={active}
+                className={`min-h-12 flex-1 rounded-2xl border px-2 font-display text-lg transition-colors ${
+                  active
+                    ? "border-terra bg-paper-dim text-terra-deep"
+                    : "border-ink-soft/25"
+                }`}
+              >
+                {g.label}
+              </button>
+            );
+          })}
+        </div>
+      </fieldset>
 
       {/* Origin picker — pick one deck, or mix a few into one blended deck. */}
       <fieldset className="flex flex-col gap-2.5">
@@ -78,13 +115,13 @@ export default function Landing() {
               >
                 {d.label}
               </span>
-              <span className="text-sm text-ink-soft">{d.sample}</span>
+              <span className="text-sm text-ink-soft">{d.sample[gender]}</span>
             </button>
           );
         })}
         <p className="min-h-5 text-sm text-ink-soft" aria-live="polite">
           {picked.length > 1
-            ? `one deck, ${size} names — dealt evenly across ${picked.length} origins`
+            ? `one deck, ${dealt} names — dealt evenly across ${picked.length} origins`
             : picked.length === 0
               ? "pick at least one deck"
               : ""}
@@ -95,24 +132,30 @@ export default function Landing() {
         <legend className="pb-1 text-sm text-ink-soft">how many names</legend>
         <div className="flex gap-2">
           {DECK_SIZE_PRESETS.map((n) => {
-            const active = n === size;
+            const active = n === dealt;
             return (
               <button
                 key={n}
                 type="button"
                 onClick={() => setSize(n)}
+                disabled={n > pool}
                 aria-pressed={active}
                 className={`min-h-12 flex-1 rounded-2xl border font-display text-lg transition-colors ${
                   active
                     ? "border-terra bg-paper-dim text-terra-deep"
                     : "border-ink-soft/25"
-                }`}
+                } disabled:opacity-40`}
               >
                 {n}
               </button>
             );
           })}
         </div>
+        <p className="min-h-5 text-sm text-ink-soft" aria-live="polite">
+          {picked.length > 0 && DECK_SIZE_PRESETS.some((n) => n > pool)
+            ? "add a region for more"
+            : ""}
+        </p>
       </fieldset>
 
       <button
