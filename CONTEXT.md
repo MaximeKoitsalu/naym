@@ -34,7 +34,7 @@ _Avoid_: vote, battle
 A name is seen once a deck containing it has been swiped through by both partners. Seen names never return in a new deck, whoever liked them.
 
 **Custom name**:
-A name a partner types in themselves. It joins a later deck and reaches the shortlist only if both like it, like any other card. Shown to couples as a "wish"; the card is openly marked as one.
+A name a partner types in themselves. It joins a later deck and reaches the shortlist only if both like it, like any other card. Shown to couples as a "wish". Up to three wait in a queue; every deck either partner deals takes them all, and a wish leaves the queue once a deck holding it is finished by both (a replaced or expired deck hands its wishes to the next one). A wish spelled like a curated name borrows that card, even if Seen, and looks like any other card; only names nobody curated are openly marked as wishes. Wishes take slots of the deck size and count toward the pool and the minimum deck, so they can top up a nearly dry pool.
 
 **Gender tag**:
 Each card is tagged girl, boy or unisex as the name is used in that card's culture (the same spelling can differ between decks). A deck is built for "girl", "boy" or "not sure yet"; unisex names belong to all three; wishes carry no tag.

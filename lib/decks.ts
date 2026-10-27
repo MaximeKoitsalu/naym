@@ -5,6 +5,7 @@ import german from "@/data/decks/german.json";
 import italian from "@/data/decks/italian.json";
 import french from "@/data/decks/french.json";
 import type { NameCard } from "./types";
+import { sameName } from "./wishes";
 import { shuffle } from "./reveal";
 import {
   DEFAULT_DECK_SIZE,
@@ -47,6 +48,9 @@ function tagged(f: typeof nordic): DeckFile {
 
 const FILES: DeckFile[] = [nordic, greek, german, italian, french].map(tagged);
 
+const versionOf = (data: unknown) =>
+  createHash("sha256").update(JSON.stringify(data)).digest("hex").slice(0, 12);
+
 const REGISTRY = new Map<string, DeckEntry>(
   FILES.map((f) => [
     f.deckId,
@@ -54,7 +58,7 @@ const REGISTRY = new Map<string, DeckEntry>(
       deckId: f.deckId,
       title: f.title,
       names: f.names,
-      version: createHash("sha256").update(JSON.stringify(f)).digest("hex").slice(0, 12),
+      version: versionOf(f),
     },
   ]),
 );
@@ -77,6 +81,20 @@ export function unseenCounts(seen: ReadonlySet<string>): Record<string, GenderCo
     for (const n of deck.names) if (!seen.has(n.id) && n.gender) c[n.gender]++;
   }
   return out;
+}
+
+/**
+ * A wish as a card: a curated card with the same name (case-insensitive) is
+ * borrowed whole, preferring the chosen decks; an unknown name becomes an
+ * untagged wish card.
+ */
+export function wishCard(name: string, preferDeckIds: string[] = []): NameCard {
+  const decks = [...preferDeckIds.map((id) => getDeckEntry(id)), ...REGISTRY.values()];
+  for (const d of decks) {
+    const card = d?.names.find((c) => sameName(c.name, name));
+    if (card) return card;
+  }
+  return { id: `wish-${name.toLocaleLowerCase()}`, name, say: "", origin: "", meaning: "", wish: true };
 }
 
 /** Clamp a requested deck size into [MIN_DECK_SIZE, MAX_DECK_SIZE], defaulting garbage input. */
@@ -129,6 +147,8 @@ function dealOrder(
  * picker disables those sizes, and a dealt deck reports it (dealSession).
  *
  * `exclude` drops the couple's Seen names before dealing — never refilled.
+ * `wishes` (cards from wishCard) take slots of `size` and are shuffled in,
+ * whatever the gender and even if Seen.
  * `rand` is injectable for deterministic tests.
  */
 export function buildSessionDeck(
@@ -137,6 +157,31 @@ export function buildSessionDeck(
   gender: DeckGender = "unsure",
   rand: () => number = Math.random,
   exclude: ReadonlySet<string> = new Set(),
+  wishes: NameCard[] = [],
+): DeckEntry | null {
+  const wishIds = wishes.map((w) => w.id);
+  const base = curatedDeck(
+    deckIds,
+    clampSize(size) - wishes.length,
+    gender,
+    rand,
+    wishes.length ? new Set([...exclude, ...wishIds]) : exclude,
+  );
+  if (!base || wishes.length === 0) return base;
+  const names = shuffle([...base.names, ...wishes], rand);
+  return {
+    ...base,
+    names,
+    version: versionOf(names),
+  };
+}
+
+function curatedDeck(
+  deckIds: string[],
+  target: number,
+  gender: DeckGender,
+  rand: () => number,
+  exclude: ReadonlySet<string>,
 ): DeckEntry | null {
   const unique = [...new Set(deckIds)];
   if (unique.length === 0) return null;
@@ -145,7 +190,6 @@ export function buildSessionDeck(
   const decks = (entries as DeckEntry[]).map((d) =>
     exclude.size ? { ...d, names: d.names.filter((c) => !exclude.has(c.id)) } : d,
   );
-  const target = clampSize(size);
 
   if (decks.length === 1) {
     const deck = decks[0];
@@ -189,6 +233,6 @@ export function buildSessionDeck(
     deckId: decks.map((d) => d.deckId).join("+"),
     title: `${labels.join(" × ")} deck`,
     names,
-    version: createHash("sha256").update(JSON.stringify(names)).digest("hex").slice(0, 12),
+    version: versionOf(names),
   };
 }

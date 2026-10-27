@@ -2,6 +2,7 @@ import { nanoid } from "nanoid";
 import { getStore } from "./store";
 import { DECK_GENDERS, type DeckGender } from "./deck-manifest";
 import { logEvent } from "./events";
+import { MAX_WISHES, sameName } from "./wishes";
 import { otherPartner, type NameCard, type Partner, type Shortlist } from "./types";
 
 /*
@@ -167,4 +168,48 @@ export async function reissuePartnerLink(token: string): Promise<string | null> 
     partner: rec.partner,
   });
   return fresh;
+}
+
+/* ── Wishes (#23) ──────────────────────────────────────────────────────── */
+
+const wishesKey = (id: string) => `shortlist:${id}:wishes`;
+
+/**
+ * Wishes waiting on this Shortlist, in slip order. Open to both partners —
+ * they're proposals, not swipes. A wish stays here until the deck it was
+ * dealt into is finished by both (removeWishes), so a replaced or expired
+ * deck hands its wishes on to the next deal.
+ */
+export async function getWishes(id: string): Promise<string[]> {
+  return (await getStore().get<string[]>(wishesKey(id))) ?? [];
+}
+
+/**
+ * Either partner slips a (cleaned) name in. A name already queued, in any case,
+ * is a no-op. `{ full }` once MAX_WISHES are queued; null for an unknown token.
+ * Logs wish_slipped without the partner.
+ */
+export async function addWish(
+  token: string,
+  name: string,
+): Promise<{ wishes: string[] } | { full: true } | null> {
+  const rec = await resolvePartner(token);
+  if (!rec) return null;
+  const wishes = await getWishes(rec.shortlistId);
+  if (wishes.some((w) => sameName(w, name))) return { wishes };
+  if (wishes.length >= MAX_WISHES) return { full: true };
+  // shortcut: read-modify-write, so a slip and a deck completing (removeWishes) at the
+  // same instant can drop one; RPUSH/LREM if it matters.
+  // A new array: the memory store hands out stored values by reference, and a dealt deck holds this one.
+  const next = [...wishes, name];
+  await getStore().set(wishesKey(rec.shortlistId), next);
+  await logEvent(null, "wish_slipped", undefined, { shortlist: rec.shortlistId });
+  return { wishes: next };
+}
+
+/** A finished deck's wishes leave the queue; anything slipped since stays. Idempotent. */
+export async function removeWishes(id: string, names: string[]): Promise<void> {
+  const wishes = await getWishes(id);
+  const left = wishes.filter((w) => !names.some((n) => sameName(n, w)));
+  if (left.length < wishes.length) await getStore().set(wishesKey(id), left);
 }

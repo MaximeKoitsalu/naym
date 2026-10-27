@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { DeckGender } from "@/lib/deck-manifest";
+import { MAX_WISHES, MAX_WISH_LENGTH, sameName } from "@/lib/wishes";
 import { replaceHolder } from "@/lib/shortlist-device";
 import type { ShortlistFilter } from "@/lib/shortlist-filter";
 import { otherPartner, type Partner } from "@/lib/types";
@@ -9,8 +10,92 @@ import { otherPartner, type Partner } from "@/lib/types";
 /*
   The Shortlist sheet behind "filter & links" (#18, variant C): the expecting
   setting, the girl/boy/both filter, this partner's own link, and a fresh link for
-  the other partner when theirs is lost.
+  the other partner when theirs is lost, and the wish slip (#23).
 */
+
+/** Variant C's paper slip. The server validates; the input only hints. */
+function WishSlip({
+  token,
+  wishes,
+  inDeck,
+  onWishes,
+}: {
+  token: string;
+  wishes: string[];
+  /** Queued wishes already dealt into the live deck. */
+  inDeck: string[];
+  onWishes: (w: string[]) => void;
+}) {
+  const [text, setText] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const full = wishes.length >= MAX_WISHES;
+  const dealt = wishes.filter((w) => inDeck.some((d) => sameName(d, w)));
+  const waiting = wishes.filter((w) => !dealt.includes(w));
+  async function submitWish(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    const res = await fetch("/api/shortlist/wishes", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ token, name: text }),
+    }).catch(() => null);
+    const body = res?.ok ? await res.json() : null;
+    if (body?.wishes) {
+      onWishes(body.wishes);
+      setText("");
+    } else {
+      setError(
+        res?.status === 400
+          ? "Letters, spaces, hyphens and apostrophes only."
+          : res?.status === 409
+            ? `All ${MAX_WISHES} wishes are taken until the current deck is done.`
+            : "That didn't save — try again.",
+      );
+    }
+  }
+  return (
+    <form onSubmit={submitWish} className="rounded-[20px] bg-paper-dim p-5">
+      <p className="font-display text-xl">Slip a name into the next deck</p>
+      <p className="mt-1 text-sm text-ink-soft">
+        It&apos;ll show up as a wish. You both swipe it — it only joins the Shortlist if you both love it.
+      </p>
+      <div className="mt-4 flex gap-2">
+        <input
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          placeholder="a name"
+          aria-label="a name to slip into the next deck"
+          maxLength={MAX_WISH_LENGTH}
+          disabled={full}
+          className="min-h-12 min-w-0 flex-1 rounded-2xl border border-ink-soft/25 bg-paper px-4 font-display text-lg italic outline-none focus:border-terra"
+        />
+        <button
+          type="submit"
+          disabled={!text.trim() || full}
+          className="min-h-12 rounded-2xl bg-terra px-5 text-paper disabled:opacity-40"
+        >
+          Slip
+        </button>
+      </div>
+      {error && (
+        <p role="alert" className="mt-2 text-sm text-terra-deep">
+          {error}
+        </p>
+      )}
+      {waiting.length > 0 && (
+        <p className="mt-3 text-sm text-ink-soft">
+          Waiting for the next deck: {waiting.join(", ")} ({wishes.length}/{MAX_WISHES})
+        </p>
+      )}
+      {dealt.length > 0 && (
+        <p className="mt-3 text-sm text-ink-soft">
+          In the deck you&apos;re swiping now: {dealt.join(", ")}
+          {waiting.length === 0 && ` (${wishes.length}/${MAX_WISHES})`}
+        </p>
+      )}
+    </form>
+  );
+}
 
 export function CopyLinkButton({
   token,
@@ -144,6 +229,9 @@ export default function ShortlistSheet({
   onExpecting,
   filter,
   onFilter,
+  wishes,
+  wishesInDeck,
+  onWishes,
   onClose,
 }: {
   token: string;
@@ -152,6 +240,9 @@ export default function ShortlistSheet({
   onExpecting: (g: DeckGender) => void;
   filter: ShortlistFilter;
   onFilter: (f: ShortlistFilter) => void;
+  wishes: string[];
+  wishesInDeck: string[];
+  onWishes: (w: string[]) => void;
   onClose: () => void;
 }) {
   useEffect(() => {
@@ -166,10 +257,11 @@ export default function ShortlistSheet({
         role="dialog"
         aria-modal="true"
         aria-label="Shortlist filter and links"
-        className="mx-auto w-full max-w-[480px] space-y-5 rounded-t-[20px] bg-paper p-6 pb-24"
+        className="mx-auto max-h-[90dvh] w-full max-w-[480px] space-y-5 overflow-y-auto rounded-t-[20px] bg-paper p-6 pb-24"
         onClick={(e) => e.stopPropagation()}
       >
         <Choice legend="who are we naming?" options={EXPECTING_OPTIONS} value={expecting} onChange={onExpecting} />
+        <WishSlip token={token} wishes={wishes} inDeck={wishesInDeck} onWishes={onWishes} />
         <Choice legend="show" options={FILTER_OPTIONS} value={filter} onChange={onFilter} />
         <p className="text-sm leading-relaxed text-ink-soft">
           This link is yours alone. Your partner has their own.
