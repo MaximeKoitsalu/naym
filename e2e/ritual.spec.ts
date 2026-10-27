@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import type { Browser, Page } from "@playwright/test";
+import type { Browser, Page, Response } from "@playwright/test";
 
 /*
   The flagship E2E: the full ritual in two browser contexts, with the
@@ -112,15 +112,25 @@ test("full ritual: A swipes → handoff → B swipes blind → both reveals matc
     [a.page, aShortlist, bShortlist],
     [b.page, bShortlist, aShortlist],
   ] as const) {
+    // Tap every response the Shortlist page pulls (document, RSC, API).
+    const bodies: Promise<string>[] = [];
+    const tap = (res: Response) => {
+      if (/\.(js|css|woff2?|png|svg|ico)(\?|$)/.test(res.url())) return;
+      bodies.push(res.text().catch(() => ""));
+    };
+    p.on("response", tap);
     await p.goto(own);
     for (const name of ["Astrid", "Liv", "Nils"]) {
       await expect(p.getByText(name, { exact: true })).toBeVisible();
     }
-    // The page payload carries matches only: no solo like, no other link.
-    const html = await p.content();
-    expect(html).not.toContain("Saga");
-    expect(html).not.toContain("Leif");
-    expect(html).not.toContain(other.split("/").pop()!);
+    await p.waitForLoadState("networkidle");
+    p.off("response", tap);
+    // Matches only: no solo like, no other Partner's token — on the wire or in the DOM.
+    const wire = (await Promise.all(bodies)).join("\n") + (await p.content());
+    expect(bodies.length).toBeGreaterThan(0);
+    expect(wire).not.toContain("Saga");
+    expect(wire).not.toContain("Leif");
+    expect(wire).not.toContain(other.split("/").pop()!);
     // Remembered on this device → the landing offers the way back.
     await p.goto("/");
     await expect(p.getByRole("link", { name: "Back to our Shortlist →" })).toHaveAttribute("href", own);

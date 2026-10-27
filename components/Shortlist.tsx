@@ -21,7 +21,7 @@ function remember(token: string) {
   }
 }
 
-function useCopyLink(token: string) {
+function CopyLinkButton({ token, autoFocus }: { token: string; autoFocus?: boolean }) {
   const [copied, setCopied] = useState(false);
   async function copy() {
     await navigator.clipboard
@@ -29,12 +29,19 @@ function useCopyLink(token: string) {
       .then(() => setCopied(true))
       .catch(() => null);
   }
-  return [copied, copy] as const;
+  return (
+    <button
+      onClick={copy}
+      autoFocus={autoFocus}
+      className="min-h-12 w-full rounded-full border border-ink-soft/25 px-6 font-medium"
+    >
+      {copied ? "Link copied" : "Copy my Shortlist link"}
+    </button>
+  );
 }
 
 /** On the reveal: this partner's OWN link only. */
 export function KeepShortlist({ token }: { token: string }) {
-  const [copied, copy] = useCopyLink(token);
   useEffect(() => remember(token), [token]);
   return (
     <section className="flex flex-col gap-3 rounded-[20px] bg-paper-dim p-5 text-left">
@@ -43,12 +50,7 @@ export function KeepShortlist({ token }: { token: string }) {
         Every name you both love lands there — this deck and the next. The
         link is yours alone: open it and add it to your home screen.
       </p>
-      <button
-        onClick={copy}
-        className="min-h-12 rounded-full border border-ink-soft/25 px-6 font-medium"
-      >
-        {copied ? "Link copied" : "Copy my Shortlist link"}
-      </button>
+      <CopyLinkButton token={token} />
       <Link
         href={`/shortlist/${token}`}
         className="min-h-12 rounded-full bg-terra px-6 py-3 text-center font-medium text-paper"
@@ -99,7 +101,6 @@ export default function ShortlistPage({
   entries: ShortlistEntry[];
 }) {
   const [sheet, setSheet] = useState(false);
-  const [copied, copy] = useCopyLink(token);
   useEffect(() => remember(token), [token]);
   useEffect(() => {
     if (!sheet) return;
@@ -144,15 +145,10 @@ export default function ShortlistPage({
         links
       </button>
 
-      <div className="fixed bottom-16 left-1/2 w-[min(440px,calc(100%-32px))] -translate-x-1/2">
-        {/* shortcut: a fresh, unlinked session until #21 deals decks from the Shortlist */}
-        <Link
-          href="/"
-          className="block w-full rounded-full bg-terra py-4 text-center text-paper"
-        >
-          Deal a new deck →
-        </Link>
-      </div>
+      {/* No next-step button until #21: a link to / would mint a second Shortlist. */}
+      <p className="mt-8 text-center text-sm text-ink-soft">
+        New decks from here are coming soon.
+      </p>
 
       {sheet && (
         <div
@@ -172,13 +168,7 @@ export default function ShortlistPage({
             <p className="text-sm leading-relaxed text-ink-soft">
               This link is yours alone. Your partner has their own.
             </p>
-            <button
-              onClick={copy}
-              autoFocus
-              className="min-h-12 w-full rounded-full border border-ink-soft/25 px-6 font-medium"
-            >
-              {copied ? "Link copied" : "Copy my Shortlist link"}
-            </button>
+            <CopyLinkButton token={token} autoFocus />
             <button
               onClick={() => setSheet(false)}
               className="min-h-11 w-full text-sm text-ink-soft underline"

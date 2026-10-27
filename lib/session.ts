@@ -119,8 +119,8 @@ export async function putSwipes(
   const completed = isComplete(deck, guarded);
   if (completed && !wasComplete) {
     await logEvent(meta.id, "deck_completed", role, { round });
-    // The last finisher lands the matches on the Shortlist (null while the other is mid-deck).
-    await getReveal(token, { logView: false });
+    // The last finisher lands the matches on the Shortlist (no-op while the other is mid-deck).
+    await landSessionMatches(meta);
   }
   return { swipes: guarded, completed };
 }
@@ -162,6 +162,24 @@ export async function armRound2(token: string): Promise<boolean> {
 }
 
 /**
+ * WRITES: copies the server-computed matches (round 1, and round 2 once both
+ * finish it) onto the couple's Shortlist. Idempotent; a no-op until both are done.
+ */
+export async function landSessionMatches(meta: SessionMeta): Promise<void> {
+  if (!meta.shortlist) return;
+  const [a, b] = await Promise.all([getSwipes(meta.id, "A"), getSwipes(meta.id, "B")]);
+  if (!isComplete(meta.deck, a) || !isComplete(meta.deck, b)) return;
+  const cards = intersection(meta.deck, a, b);
+  if (meta.round2) {
+    const [r2a, r2b] = await Promise.all([getSwipes(meta.id, "A", 2), getSwipes(meta.id, "B", 2)]);
+    if (isComplete(meta.round2.deck, r2a) && isComplete(meta.round2.deck, r2b)) {
+      cards.push(...intersection(meta.round2.deck, r2a, r2b));
+    }
+  }
+  await landMatches(meta.shortlist.id, cards);
+}
+
+/**
  * The blindness boundary. Computes the reveal server-side and returns
  * ONLY what the product means to show. Raw swipe arrays never leave here.
  */
@@ -200,7 +218,7 @@ export async function getReveal(
     }
   }
   if (meta.shortlist) {
-    await landMatches(meta.shortlist.id, [...matches, ...(payload.round2?.matches ?? [])]);
+    await landSessionMatches(meta); // heals a landing lost at completion
     payload.shortlistToken = await partnerToken(meta.shortlist.id, meta.shortlist[role]);
   }
   if (logView) await logEvent(meta.id, "reveal_viewed", role);
