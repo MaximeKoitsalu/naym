@@ -4,7 +4,6 @@ import { MIN_DECK_SIZE, type DeckGender } from "./deck-manifest";
 import { logEvent } from "./events";
 import { getStore, SESSION_TTL_S } from "./store";
 import {
-  clearWishes,
   createShortlist,
   getDeal,
   getSeen,
@@ -14,6 +13,7 @@ import {
   mintPartner,
   partnerToken,
   recordDeal,
+  removeWishes,
   resolvePartner,
 } from "./shortlist";
 import {
@@ -61,6 +61,7 @@ export async function createSession(
 async function openSession(
   entry: DeckEntry,
   shortlist: NonNullable<SessionMeta["shortlist"]>,
+  wishes: string[] = [],
 ): Promise<{ creatorToken: string; inviteToken: string; sessionId: string }> {
   const store = getStore();
   const id = nanoid(12);
@@ -77,12 +78,13 @@ async function openSession(
     bStartedAt: null,
     round2: null,
     shortlist,
+    ...(wishes.length ? { wishes } : {}),
     inviteToken,
   };
   await store.set(metaKey(id), meta, SESSION_TTL_S);
   await store.set(tokKey(creatorToken), { id, role: "A" } satisfies TokenRecord, SESSION_TTL_S);
   await store.set(tokKey(inviteToken), { id, role: "B" } satisfies TokenRecord, SESSION_TTL_S);
-  await logEvent(id, "session_created");
+  await logEvent(id, "session_created", undefined, { wishes: wishes.length });
   return { creatorToken, inviteToken, sessionId: id };
 }
 
@@ -110,7 +112,9 @@ function canReplace(live: Awaited<ReturnType<typeof liveDeal>>, partner: Partner
 /**
  * Either Partner deals a new deck from their Shortlist: the dealer is role A,
  * the other Partner role B, on the SAME Shortlist. Seen names never return.
- * Queued wishes empty into this deck, taking slots of `size`.
+ * Every queued wish goes into this deck, taking slots of `size`; it leaves the
+ * queue when both finish the deck (landSessionMatches). One live deck at a time,
+ * so a wish is never in two live decks; a replaced deck's wishes are re-dealt here.
  * Fewer than MIN_DECK_SIZE names, wishes included → `{ dry }` (wishes stay queued); a live deck the dealer
  * can't replace → `{ busy }`. Neither creates anything.
  */
@@ -124,19 +128,18 @@ export async function dealSession(
   if (!partner) return null;
   if (!canReplace(await liveDeal(partner.shortlistId), partner.partner)) return { busy: true };
   const seen = await getSeen(partner.shortlistId);
-  const wishes = (await getWishes(partner.shortlistId)).map((w) => wishCard(w, deckIds));
+  const wishNames = await getWishes(partner.shortlistId);
+  const wishes = wishNames.map((w) => wishCard(w, deckIds));
   const entry = buildSessionDeck(deckIds, size, gender, Math.random, seen, wishes);
   if (!entry) return null;
   if (entry.names.length < MIN_DECK_SIZE) return { dry: entry.names.length };
   const other = otherPartner(partner.partner);
-  const { creatorToken, inviteToken } = await openSession(entry, {
-    id: partner.shortlistId,
-    A: partner.partner,
-    B: other,
-  });
+  const { creatorToken, inviteToken } = await openSession(
+    entry,
+    { id: partner.shortlistId, A: partner.partner, B: other },
+    wishNames,
+  );
   await recordDeal(partner.shortlistId, { dealer: partner.partner, creatorToken, inviteToken });
-  // shortcut: a slip landing between getWishes and here is dropped; fine at one live deck per Shortlist.
-  if (wishes.length) await clearWishes(partner.shortlistId);
   return { creatorToken, size: entry.names.length };
 }
 
@@ -158,6 +161,7 @@ export async function getDealView(partnerTok: string): Promise<DealView | null> 
     size: meta.deck.length,
     href: mine ? `/s/${deal.creatorToken}` : aDone ? `/s/${deal.inviteToken}` : null,
     canDeal: canReplace(live, partner.partner),
+    wishes: meta.wishes ?? [],
   };
 }
 
@@ -251,7 +255,7 @@ export async function armRound2(token: string): Promise<boolean> {
 }
 
 /**
- * WRITES: marks the deck Seen and copies the server-computed matches (round 1, and round 2 once both
+ * WRITES: marks the deck Seen, takes its wishes off the queue, and copies the server-computed matches (round 1, and round 2 once both
  * finish it) onto the couple's Shortlist. Idempotent; a no-op until both are done.
  */
 export async function landSessionMatches(meta: SessionMeta): Promise<void> {
@@ -260,6 +264,7 @@ export async function landSessionMatches(meta: SessionMeta): Promise<void> {
   if (!isComplete(meta.deck, a) || !isComplete(meta.deck, b)) return;
   // Both finished → every card is Seen, liked or not (direction-blind, so it leaks nothing).
   await markSeen(meta.shortlist.id, meta.deck.map((c) => c.id));
+  if (meta.wishes) await removeWishes(meta.shortlist.id, meta.wishes);
   const cards = intersection(meta.deck, a, b);
   if (meta.round2) {
     const [r2a, r2b] = await Promise.all([getSwipes(meta.id, "A", 2), getSwipes(meta.id, "B", 2)]);

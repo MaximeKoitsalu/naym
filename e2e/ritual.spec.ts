@@ -228,7 +228,7 @@ test("full ritual: A swipes → handoff → B swipes blind → both reveals matc
   await slip.fill("R2D2");
   await a.page.getByRole("button", { name: "Slip", exact: true }).click();
   await expect(a.page.getByRole("alert").filter({ hasText: "Letters" })).toHaveText("Letters, spaces, hyphens and apostrophes only.");
-  await slip.fill("Mirja");
+  await slip.fill("mirja"); // capitalised on the way in
   await a.page.getByRole("button", { name: "Slip", exact: true }).click();
   await expect(a.page.getByText("Waiting for the next deck: Mirja (1/3)")).toBeVisible();
   await a.page.reload();

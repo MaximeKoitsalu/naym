@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { DeckGender } from "@/lib/deck-manifest";
-import { MAX_WISHES, MAX_WISH_LENGTH } from "@/lib/wishes";
+import { MAX_WISHES, MAX_WISH_LENGTH, sameName } from "@/lib/wishes";
 import { replaceHolder } from "@/lib/shortlist-device";
 import type { ShortlistFilter } from "@/lib/shortlist-filter";
 import { otherPartner, type Partner } from "@/lib/types";
@@ -17,16 +17,21 @@ import { otherPartner, type Partner } from "@/lib/types";
 function WishSlip({
   token,
   wishes,
+  inDeck,
   onWishes,
 }: {
   token: string;
   wishes: string[];
+  /** Queued wishes already dealt into the live deck. */
+  inDeck: string[];
   onWishes: (w: string[]) => void;
 }) {
   const [text, setText] = useState("");
   const [error, setError] = useState<string | null>(null);
   const full = wishes.length >= MAX_WISHES;
-  async function slip(e: React.FormEvent) {
+  const dealt = wishes.filter((w) => inDeck.some((d) => sameName(d, w)));
+  const waiting = wishes.filter((w) => !dealt.includes(w));
+  async function submitWish(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
     const res = await fetch("/api/shortlist/wishes", {
@@ -43,13 +48,13 @@ function WishSlip({
         res?.status === 400
           ? "Letters, spaces, hyphens and apostrophes only."
           : res?.status === 409
-            ? "Three are already waiting for the next deck."
+            ? `All ${MAX_WISHES} wishes are taken until the current deck is done.`
             : "That didn't save — try again.",
       );
     }
   }
   return (
-    <form onSubmit={slip} className="rounded-[20px] bg-paper-dim p-5">
+    <form onSubmit={submitWish} className="rounded-[20px] bg-paper-dim p-5">
       <p className="font-display text-xl">Slip a name into the next deck</p>
       <p className="mt-1 text-sm text-ink-soft">
         It&apos;ll show up as a wish. You both swipe it — it only joins the Shortlist if you both love it.
@@ -77,9 +82,15 @@ function WishSlip({
           {error}
         </p>
       )}
-      {wishes.length > 0 && (
+      {waiting.length > 0 && (
         <p className="mt-3 text-sm text-ink-soft">
-          Waiting for the next deck: {wishes.join(", ")} ({wishes.length}/{MAX_WISHES})
+          Waiting for the next deck: {waiting.join(", ")} ({wishes.length}/{MAX_WISHES})
+        </p>
+      )}
+      {dealt.length > 0 && (
+        <p className="mt-3 text-sm text-ink-soft">
+          In the deck you&apos;re swiping now: {dealt.join(", ")}
+          {waiting.length === 0 && ` (${wishes.length}/${MAX_WISHES})`}
         </p>
       )}
     </form>
@@ -219,6 +230,7 @@ export default function ShortlistSheet({
   filter,
   onFilter,
   wishes,
+  wishesInDeck,
   onWishes,
   onClose,
 }: {
@@ -229,6 +241,7 @@ export default function ShortlistSheet({
   filter: ShortlistFilter;
   onFilter: (f: ShortlistFilter) => void;
   wishes: string[];
+  wishesInDeck: string[];
   onWishes: (w: string[]) => void;
   onClose: () => void;
 }) {
@@ -248,7 +261,7 @@ export default function ShortlistSheet({
         onClick={(e) => e.stopPropagation()}
       >
         <Choice legend="who are we naming?" options={EXPECTING_OPTIONS} value={expecting} onChange={onExpecting} />
-        <WishSlip token={token} wishes={wishes} onWishes={onWishes} />
+        <WishSlip token={token} wishes={wishes} inDeck={wishesInDeck} onWishes={onWishes} />
         <Choice legend="show" options={FILTER_OPTIONS} value={filter} onChange={onFilter} />
         <p className="text-sm leading-relaxed text-ink-soft">
           This link is yours alone. Your partner has their own.

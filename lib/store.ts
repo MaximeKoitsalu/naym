@@ -13,7 +13,7 @@ import { Redis } from "@upstash/redis";
     ptok:{token}           → { shortlistId, partner } NO TTL (a Partner's Shortlist link; deleted on reissue)
     shortlist:{id}:seen    → string[] card ids       NO TTL (names in sessions both completed)
     shortlist:{id}:deal    → DealRecord              NO TTL (latest deck dealt from the Shortlist)
-    shortlist:{id}:wishes  → string[] (≤ 3)          NO TTL (wishes queued for the next deal; cleared by it)
+    shortlist:{id}:wishes  → string[] (≤ 3)          NO TTL (queued wishes; leave when their deck completes)
     duels:{id}:1|2         → { pairKey: winnerId }  NO TTL (a Partner's duel picks — server-only)
     duels:{id}:order       → CombinedOrder JSON     NO TTL (least-misery order, both partners)
 */

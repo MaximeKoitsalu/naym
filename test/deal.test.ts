@@ -141,12 +141,12 @@ describe("the other Partner's view of a dealt deck", () => {
     const dealt = (await dealSession(p1, ["nordic-v1"], 20)) as { creatorToken: string };
 
     // Dealer still swiping: the other Partner gets no link yet.
-    expect(await getDealView(p2)).toEqual({ mine: false, size: 20, href: null, canDeal: false });
-    expect(await getDealView(p1)).toEqual({ mine: true, size: 20, href: `/s/${dealt.creatorToken}`, canDeal: true });
+    expect(await getDealView(p2)).toEqual({ mine: false, size: 20, href: null, canDeal: false, wishes: [] });
+    expect(await getDealView(p1)).toEqual({ mine: true, size: 20, href: `/s/${dealt.creatorToken}`, canDeal: true, wishes: [] });
 
     const invite = await aFinishes(dealt.creatorToken);
     const view = (await getDealView(p2))!;
-    expect(view).toEqual({ mine: false, size: 20, href: `/s/${invite}`, canDeal: false });
+    expect(view).toEqual({ mine: false, size: 20, href: `/s/${invite}`, canDeal: false, wishes: [] });
     expect(JSON.stringify(view)).not.toContain(dealt.creatorToken);
 
     await getStateView(invite); // a prefetcher's GET

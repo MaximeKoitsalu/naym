@@ -52,6 +52,8 @@ export type SessionMeta = {
   round2: { deck: NameCard[]; armedAt: number } | null;
   /** The couple's Shortlist and which Partner holds each role; absent on pre-Shortlist sessions. */
   shortlist?: { id: string; A: Partner; B: Partner };
+  /** Queued wishes dealt into this deck; they leave the queue once both finish it. */
+  wishes?: string[];
 };
 
 export type Stage =
@@ -74,7 +76,8 @@ export type EventName =
   | "reveal_shared"
   | "round2_armed"
   | "handoff_mode_selected"
-  | "shortlist_link_reissued";
+  | "shortlist_link_reissued"
+  | "wish_slipped";
 
 export type RevealPayload = {
   /** Mutual likes only — raw per-role arrays NEVER serialize off the server. */
@@ -115,4 +118,6 @@ export type DealView = {
   href: string | null;
   /** False while the deck is live and this Partner may not replace it. */
   canDeal: boolean;
+  /** Queued wishes already in this deck (open proposals, like the queue). */
+  wishes: string[];
 };

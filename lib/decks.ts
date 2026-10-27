@@ -5,6 +5,7 @@ import german from "@/data/decks/german.json";
 import italian from "@/data/decks/italian.json";
 import french from "@/data/decks/french.json";
 import type { NameCard } from "./types";
+import { sameName } from "./wishes";
 import { shuffle } from "./reveal";
 import {
   DEFAULT_DECK_SIZE,
@@ -47,6 +48,9 @@ function tagged(f: typeof nordic): DeckFile {
 
 const FILES: DeckFile[] = [nordic, greek, german, italian, french].map(tagged);
 
+const versionOf = (data: unknown) =>
+  createHash("sha256").update(JSON.stringify(data)).digest("hex").slice(0, 12);
+
 const REGISTRY = new Map<string, DeckEntry>(
   FILES.map((f) => [
     f.deckId,
@@ -54,7 +58,7 @@ const REGISTRY = new Map<string, DeckEntry>(
       deckId: f.deckId,
       title: f.title,
       names: f.names,
-      version: createHash("sha256").update(JSON.stringify(f)).digest("hex").slice(0, 12),
+      version: versionOf(f),
     },
   ]),
 );
@@ -85,13 +89,12 @@ export function unseenCounts(seen: ReadonlySet<string>): Record<string, GenderCo
  * untagged wish card.
  */
 export function wishCard(name: string, preferDeckIds: string[] = []): NameCard {
-  const key = name.toLocaleLowerCase();
   const decks = [...preferDeckIds.map((id) => getDeckEntry(id)), ...REGISTRY.values()];
   for (const d of decks) {
-    const card = d?.names.find((c) => c.name.toLocaleLowerCase() === key);
+    const card = d?.names.find((c) => sameName(c.name, name));
     if (card) return card;
   }
-  return { id: `wish-${key}`, name, say: "", origin: "", meaning: "", wish: true };
+  return { id: `wish-${name.toLocaleLowerCase()}`, name, say: "", origin: "", meaning: "", wish: true };
 }
 
 /** Clamp a requested deck size into [MIN_DECK_SIZE, MAX_DECK_SIZE], defaulting garbage input. */
@@ -169,7 +172,7 @@ export function buildSessionDeck(
   return {
     ...base,
     names,
-    version: createHash("sha256").update(JSON.stringify(names)).digest("hex").slice(0, 12),
+    version: versionOf(names),
   };
 }
 
@@ -230,6 +233,6 @@ function curatedDeck(
     deckId: decks.map((d) => d.deckId).join("+"),
     title: `${labels.join(" × ")} deck`,
     names,
-    version: createHash("sha256").update(JSON.stringify(names)).digest("hex").slice(0, 12),
+    version: versionOf(names),
   };
 }

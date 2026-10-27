@@ -3,6 +3,7 @@ import { NextRequest } from "next/server";
 import {
   createSession,
   dealSession,
+  getDealView,
   getReveal,
   getStateView,
   putSwipes,
@@ -11,6 +12,7 @@ import {
 import { addWish, getShortlistView, getWishes, resolvePartner } from "@/lib/shortlist";
 import { buildSessionDeck, wishCard } from "@/lib/decks";
 import { cleanWish, MAX_WISH_LENGTH } from "@/lib/wishes";
+import { getStore } from "@/lib/store";
 import { POST as postWish } from "@/app/api/shortlist/wishes/route";
 
 /*
@@ -55,9 +57,18 @@ describe("cleanWish — the API boundary", () => {
     expect(cleanWish("  Mirja   Lou ")).toBe("Mirja Lou");
   });
   it("allows letters of any script, hyphens and apostrophes", () => {
-    for (const n of ["Anne-Sophie", "O'Neil", "D’Arcy", "Søren", "Zoë", "ユキ", "Αθηνά", "आरव"]) {
+    for (const n of ["Anne-Sophie", "O'Neil", "Søren", "Zoë", "ユキ", "Αθηνά", "आरव"]) {
       expect(cleanWish(n)).toBe(n);
     }
+  });
+  it("capitalises each part, keeping the rest of the typed casing", () => {
+    expect(cleanWish("mirja")).toBe("Mirja");
+    expect(cleanWish("anna-lena")).toBe("Anna-Lena");
+    expect(cleanWish("mcKenzie rose")).toBe("McKenzie Rose");
+    expect(cleanWish("élodie")).toBe("Élodie");
+  });
+  it("straightens curly apostrophes", () => {
+    expect(cleanWish("D’Arcy")).toBe("D'Arcy");
   });
   it("rejects digits, symbols, markup, empties and over-long names", () => {
     for (const n of ["R2D2", "<b>", "a@b", "", "   ", "--", "'", 42, null, "x".repeat(MAX_WISH_LENGTH + 1)]) {
@@ -75,6 +86,18 @@ describe("the wish queue", () => {
     await addWish(p1, "Saga");
     expect(await addWish(p2, "Tove")).toEqual({ full: true });
     expect(await getWishes((await resolvePartner(p1))!.shortlistId)).toEqual(["Mirja", "Ilse", "Saga"]);
+  });
+
+  it("O'Neil and O’Neil are the same wish; wish_slipped never names the partner", async () => {
+    const { p1, p2 } = await couple("nordic-v1", 10);
+    await addWish(p1, cleanWish("O'Neil")!);
+    expect(await addWish(p2, cleanWish("o’neil")!)).toEqual({ wishes: ["O'Neil"] });
+    const slipped = (await getStore().range("events:log")).filter(
+      (e) => (e as { event: string }).event === "wish_slipped",
+    );
+    expect(slipped).toHaveLength(1);
+    expect(slipped[0]).toMatchObject({ session: null, role: null });
+    expect(slipped[0]).not.toHaveProperty("partner");
   });
 
   it("an unknown token queues nothing", async () => {
@@ -145,7 +168,16 @@ describe("wishes entering a dealt deck", () => {
 
     const dealt = await deal(p2, ["greek-v1"], 10, "boy");
     expect(dealt.size).toBe(10);
-    expect(await getWishes((await resolvePartner(p1))!.shortlistId)).toEqual([]);
+    const id = (await resolvePartner(p1))!.shortlistId;
+    // Still queued while the deck is live; the dealt event counts them.
+    expect(await getWishes(id)).toEqual(["Mirja", "Ilse", "saga"]);
+    expect((await getDealView(p1))!.wishes).toEqual(["Mirja", "Ilse", "saga"]);
+    const created = (await getStore().range("events:log")).filter(
+      (e) => (e as { event: string }).event === "session_created",
+    );
+    expect(created.at(-1)).toMatchObject({ wishes: 3 });
+    // A slip while the deck is live waits for the next one — once a slot frees.
+    expect(await addWish(p1, "Tove")).toEqual({ full: true });
     const deck = (await getStateView(dealt.creatorToken))!.deck;
     // A Seen curated name comes back when wished, borrowing its card.
     expect(deck.find((c) => c.id === saga.id)).toEqual(saga);
@@ -158,6 +190,8 @@ describe("wishes entering a dealt deck", () => {
       (id) => id === "wish-mirja",
     );
     await getReveal(invite);
+    // A finished deck takes its own wishes off the queue.
+    expect(await getWishes(id)).toEqual([]);
     const entries = (await getShortlistView(p1))!.entries;
     expect(entries.find((e) => e.id === "wish-mirja")).toMatchObject({ name: "Mirja", wish: true });
     expect(entries.find((e) => e.id === "wish-ilse")).toBeUndefined();
@@ -168,5 +202,22 @@ describe("wishes entering a dealt deck", () => {
     await addWish(p1, "Mirja");
     expect(await dealSession(p1, ["greek-v1"], 10, "boy")).toEqual({ dry: 6 });
     expect(await getWishes((await resolvePartner(p1))!.shortlistId)).toEqual(["Mirja"]);
+  });
+
+  it("a replaced deck hands its wishes to the next deal; a later slip survives completion", async () => {
+    const { p1 } = await couple("nordic-v1", 10);
+    const id = (await resolvePartner(p1))!.shortlistId;
+    await addWish(p1, "Mirja");
+    const first = await deal(p1, ["greek-v1"], 10);
+    const replaced = await deal(p1, ["greek-v1"], 10); // B hasn't started, so the dealer may replace
+    expect(replaced.creatorToken).not.toBe(first.creatorToken);
+    const names = async (t: string) => (await getStateView(t))!.deck.map((c) => c.name);
+    expect(await names(replaced.creatorToken)).toContain("Mirja");
+    expect(await getWishes(id)).toEqual(["Mirja"]);
+
+    await addWish(p1, "Ilse"); // slipped while the deck is live — not in it
+    expect(await names(replaced.creatorToken)).not.toContain("Ilse");
+    await bothFinish(replaced.creatorToken, () => false, () => false);
+    expect(await getWishes(id)).toEqual(["Ilse"]);
   });
 });

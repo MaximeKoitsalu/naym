@@ -13,6 +13,7 @@ import {
   type GenderCounts,
 } from "@/lib/deck-manifest";
 import { BackToShortlist } from "@/components/Shortlist";
+import { MAX_WISHES } from "@/lib/wishes";
 
 const GENDER_OPTIONS: { value: DeckGender; label: string }[] = [
   { value: "girl", label: "a girl" },
@@ -30,10 +31,13 @@ export default function Landing() {
   const [deal, setDeal] = useState<string | null>(null);
   // The couple's unseen names per deck, carried on the deal link — sizes they can't fill are disabled.
   const [unseen, setUnseen] = useState<Record<string, GenderCounts> | undefined>();
+  // Queued wishes join the dealt deck whatever the decks or gender, so they count toward the pool.
+  const [wishes, setWishes] = useState(0);
   const [notice, setNotice] = useState<string | null>(null);
   useEffect(() => {
     const q = new URLSearchParams(window.location.search);
     setDeal(q.get("deal"));
+    setWishes(Math.max(0, Math.min(MAX_WISHES, Number(q.get("wishes")) || 0)));
     try {
       setUnseen(JSON.parse(q.get("pool") ?? "null") ?? undefined);
     } catch {
@@ -43,7 +47,9 @@ export default function Landing() {
     if (g) setGender(g);
   }, []);
   useEffect(() => setNotice(null), [picked, size, gender]);
-  const pool = poolSize(picked, gender, unseen);
+  // shortcut: a wish borrowing an unseen curated card is counted twice, so the pool can
+  // run up to MAX_WISHES high; the server then deals a slightly smaller deck. Fine at that cap.
+  const pool = picked.length ? poolSize(picked, gender, unseen) + wishes : 0;
   // Never deal a deck the pool can't fill: fall back to the largest size that fits.
   const fits = DECK_SIZE_PRESETS.filter((n) => n <= pool);
   const dealt = size <= pool ? size : (fits.at(-1) ?? size);

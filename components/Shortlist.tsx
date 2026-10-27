@@ -206,7 +206,7 @@ export default function ShortlistPage({
           <Link
             href={`/?deal=${token}&gender=${expecting}${
               unseen ? `&pool=${encodeURIComponent(JSON.stringify(unseen))}` : ""
-            }`}
+            }${wishes.length ? `&wishes=${wishes.length}` : ""}`}
             className={`min-h-14 rounded-full px-8 py-4 text-center text-lg font-medium ${
               deal || duelsStep(duels) ? "border border-ink-soft/25" : "bg-ink text-paper"
             }`}
@@ -229,6 +229,7 @@ export default function ShortlistPage({
           filter={filter}
           onFilter={setFilter}
           wishes={wishes}
+          wishesInDeck={deal?.wishes ?? []}
           onWishes={setWishes}
           onClose={() => setSheet(false)}
         />
