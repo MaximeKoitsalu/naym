@@ -10,10 +10,10 @@ import { otherPartner, type NameCard, type Partner, type Shortlist } from "./typ
   server-computed intersection (landMatches), never a partner's own likes.
 */
 
-type PartnerRecord = { shortlistId: string; partner: Partner };
+export type PartnerRecord = { shortlistId: string; partner: Partner };
 
-const shortlistKey = (id: string) => `shortlist:${id}`;
-const ptokKey = (t: string) => `ptok:${t}`;
+export const shortlistKey = (id: string) => `shortlist:${id}`;
+export const ptokKey = (t: string) => `ptok:${t}`;
 
 /** A new Shortlist with Partner 1 minted; Partner 2 waits for B's start tap. */
 export async function createShortlist(
@@ -84,6 +84,48 @@ export async function getShortlistView(token: string) {
     expecting: DECK_GENDERS.find((g) => g === shortlist.expecting) ?? "unsure",
     entries: shortlist.entries,
   };
+}
+
+/* ── Dealing (#21) ─────────────────────────────────────────────────────── */
+
+const seenKey = (id: string) => `shortlist:${id}:seen`;
+const dealKey = (id: string) => `shortlist:${id}:deal`;
+
+/** The latest deck dealt from this Shortlist. Tokens here never serialize as-is. */
+export type DealRecord = {
+  dealer: Partner;
+  creatorToken: string;
+  inviteToken: string;
+};
+
+export async function resolvePartner(token: string): Promise<PartnerRecord | null> {
+  return getStore().get<PartnerRecord>(ptokKey(token));
+}
+
+/** Seen: every name in a session both partners completed, however they swiped it. */
+export async function getSeen(id: string): Promise<Set<string>> {
+  return new Set((await getStore().get<string[]>(seenKey(id))) ?? []);
+}
+
+/**
+ * Idempotent. shortcut: read-modify-write, but a Shortlist has one live deck
+ * at a time (dealSession), so it only races with itself writing the same ids;
+ * use SADD if decks ever run concurrently.
+ */
+export async function markSeen(id: string, cardIds: string[]): Promise<void> {
+  const seen = await getSeen(id);
+  if (cardIds.every((c) => seen.has(c))) return;
+  for (const c of cardIds) seen.add(c);
+  await getStore().set(seenKey(id), [...seen]);
+}
+
+/** Replaces the last deal — dealSession only allows that when nobody loses a started deck. */
+export async function recordDeal(id: string, deal: DealRecord): Promise<void> {
+  await getStore().set(dealKey(id), deal);
+}
+
+export async function getDeal(id: string): Promise<DealRecord | null> {
+  return getStore().get<DealRecord>(dealKey(id));
 }
 
 /** Either partner can change who they're naming ("finding out"). Nothing is deleted. */

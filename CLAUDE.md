@@ -47,7 +47,9 @@ npm run typecheck  # tsc --noEmit
    to the other Partner. One deliberate exception: "send my partner a fresh
    link" (`reissuePartnerLink`) hands the requester the other's NEW token and
    revokes the old one — never the requester's own. Shortlist keys
-   (`shortlist:*`, `ptok:*`) are durable, no TTL; a reissue deletes the old `ptok:`.
+   (`shortlist:*`, `ptok:*`, `duels:*`) are durable, no TTL; a reissue deletes
+   the old `ptok:`. Duel picks (`duels:{id}:1|2`) never serialize off the
+   server — only the combined order does, and a pick is final.
 
 ## Storage
 

@@ -11,6 +11,10 @@ import { Redis } from "@upstash/redis";
     events:log             → append-only list, NO TTL (the kill metric outlives sessions)
     shortlist:{id}         → Shortlist JSON          NO TTL (partner tokens, expecting, entries)
     ptok:{token}           → { shortlistId, partner } NO TTL (a Partner's Shortlist link; deleted on reissue)
+    shortlist:{id}:seen    → string[] card ids       NO TTL (names in sessions both completed)
+    shortlist:{id}:deal    → DealRecord              NO TTL (latest deck dealt from the Shortlist)
+    duels:{id}:1|2         → { pairKey: winnerId }  NO TTL (a Partner's duel picks — server-only)
+    duels:{id}:order       → CombinedOrder JSON     NO TTL (least-misery order, both partners)
 */
 
 export const SESSION_TTL_S = 30 * 24 * 60 * 60;

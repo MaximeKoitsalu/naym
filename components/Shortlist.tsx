@@ -2,10 +2,12 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import type { DeckGender } from "@/lib/deck-manifest";
+import type { DeckGender, GenderCounts } from "@/lib/deck-manifest";
+import type { DuelsView } from "@/lib/duels";
 import { defaultFilter, visibleEntries } from "@/lib/shortlist-filter";
 import { lastShortlist, otherHolder, remember } from "@/lib/shortlist-device";
-import type { Partner, ShortlistEntry } from "@/lib/types";
+import type { DealView, Partner, ShortlistEntry } from "@/lib/types";
+import { DuelsButton, OrderSummary, duelsStep, rankClass } from "./Duels";
 import ShortlistSheet, { CopyLinkButton } from "./ShortlistSheet";
 
 /*
@@ -84,11 +86,19 @@ export default function ShortlistPage({
   partner,
   expecting: initialExpecting,
   entries,
+  deal = null,
+  unseen,
+  duels,
 }: {
   token: string;
   partner: Partner;
   expecting: DeckGender;
   entries: ShortlistEntry[];
+  /** The live dealt deck as this Partner sees it (getDealView). */
+  deal?: DealView | null;
+  /** Unseen names per deck — the builder's size picker counts only these. */
+  unseen?: Record<string, GenderCounts>;
+  duels: DuelsView;
 }) {
   const [sheet, setSheet] = useState(false);
   const [expecting, setExpecting] = useState(initialExpecting);
@@ -136,7 +146,7 @@ export default function ShortlistPage({
               {shown.map((e, i) => (
                 <li
                   key={e.id}
-                  className={`font-display ${i < 3 ? "text-4xl" : "text-2xl text-ink-soft"}`}
+                  className={`font-display ${rankClass(i, !!duels.order)}`}
                 >
                   {e.name}
                 </li>
@@ -145,11 +155,16 @@ export default function ShortlistPage({
             <p className="mt-8 text-sm text-ink-soft" suppressHydrationWarning>
               {shown.length === entries.length ? shown.length : `${shown.length} of ${entries.length}`}{" "}
               {entries.length === 1 ? "name" : "names"} you both love · since{" "}
-              {day(shown[0].matchedAt)}
+              {day(Math.min(...entries.map((e) => e.matchedAt)))}
             </p>
           </>
         )}
       </section>
+      {duels.order && (
+        <div className="mx-6 mt-6">
+          <OrderSummary order={duels.order} entries={entries} />
+        </div>
+      )}
       <button
         onClick={() => setSheet(true)}
         className="mx-auto mt-4 min-h-11 text-sm text-ink-soft underline"
@@ -157,10 +172,42 @@ export default function ShortlistPage({
         filter & links
       </button>
 
-      {/* No next-step button until #21: a link to / would mint a second Shortlist. */}
-      <p className="mt-8 text-center text-sm text-ink-soft">
-        New decks from here are coming soon.
-      </p>
+      <div className="fixed inset-x-0 bottom-0 mx-auto flex w-full max-w-[480px] flex-col gap-3 bg-paper px-6 pb-8 pt-4">
+        {deal?.href && (
+          <Link
+            href={deal.href}
+            className="min-h-14 rounded-full bg-terra px-8 py-4 text-center text-lg font-medium text-paper"
+          >
+            {deal.mine
+              ? `Back to your ${deal.size} new names →`
+              : `Your partner dealt ${deal.size} new names →`}
+          </Link>
+        )}
+        {deal && !deal.href && (
+          <p className="text-center text-sm text-ink-soft">
+            Your partner is dealing {deal.size} new names.
+          </p>
+        )}
+        {/* Priority: an incoming deck, then duels, waiting, our order — then Deal. */}
+        {!deal?.href && <DuelsButton token={token} duels={duels} />}
+        {!deal || deal.canDeal ? (
+          // ?deal= makes the builder attach to THIS Shortlist instead of minting one.
+          <Link
+            href={`/?deal=${token}&gender=${expecting}${
+              unseen ? `&pool=${encodeURIComponent(JSON.stringify(unseen))}` : ""
+            }`}
+            className={`min-h-14 rounded-full px-8 py-4 text-center text-lg font-medium ${
+              deal || duelsStep(duels) ? "border border-ink-soft/25" : "bg-ink text-paper"
+            }`}
+          >
+            Deal a new deck →
+          </Link>
+        ) : (
+          deal.mine && (
+            <p className="text-center text-sm text-ink-soft">Finish your current deck first.</p>
+          )
+        )}
+      </div>
 
       {sheet && (
         <ShortlistSheet

@@ -16,6 +16,9 @@ A partner's private, never-expiring way back to the Shortlist. Each partner has 
 The finite set of name cards both partners swipe in one session, pinned at creation.
 _Avoid_: list, pack
 
+**Deal**:
+A partner starting a new deck from the Shortlist; the dealer is role A for that session. Seen names are left out; when too few are left, the dealer is asked to add a deck for more. A Shortlist has one live deck at a time.
+
 **Match**:
 A name both partners liked in the same deck.
 
