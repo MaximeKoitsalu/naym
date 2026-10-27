@@ -79,6 +79,21 @@ export function unseenCounts(seen: ReadonlySet<string>): Record<string, GenderCo
   return out;
 }
 
+/**
+ * A wish as a card: a curated card with the same name (case-insensitive) is
+ * borrowed whole, preferring the chosen decks; an unknown name becomes an
+ * untagged wish card.
+ */
+export function wishCard(name: string, preferDeckIds: string[] = []): NameCard {
+  const key = name.toLocaleLowerCase();
+  const decks = [...preferDeckIds.map((id) => getDeckEntry(id)), ...REGISTRY.values()];
+  for (const d of decks) {
+    const card = d?.names.find((c) => c.name.toLocaleLowerCase() === key);
+    if (card) return card;
+  }
+  return { id: `wish-${key}`, name, say: "", origin: "", meaning: "", wish: true };
+}
+
 /** Clamp a requested deck size into [MIN_DECK_SIZE, MAX_DECK_SIZE], defaulting garbage input. */
 function clampSize(size: number): number {
   if (!Number.isFinite(size)) return DEFAULT_DECK_SIZE;
@@ -129,6 +144,8 @@ function dealOrder(
  * picker disables those sizes, and a dealt deck reports it (dealSession).
  *
  * `exclude` drops the couple's Seen names before dealing — never refilled.
+ * `wishes` (cards from wishCard) take slots of `size` and are shuffled in,
+ * whatever the gender and even if Seen.
  * `rand` is injectable for deterministic tests.
  */
 export function buildSessionDeck(
@@ -137,6 +154,31 @@ export function buildSessionDeck(
   gender: DeckGender = "unsure",
   rand: () => number = Math.random,
   exclude: ReadonlySet<string> = new Set(),
+  wishes: NameCard[] = [],
+): DeckEntry | null {
+  const wishIds = wishes.map((w) => w.id);
+  const base = curatedDeck(
+    deckIds,
+    clampSize(size) - wishes.length,
+    gender,
+    rand,
+    wishes.length ? new Set([...exclude, ...wishIds]) : exclude,
+  );
+  if (!base || wishes.length === 0) return base;
+  const names = shuffle([...base.names, ...wishes], rand);
+  return {
+    ...base,
+    names,
+    version: createHash("sha256").update(JSON.stringify(names)).digest("hex").slice(0, 12),
+  };
+}
+
+function curatedDeck(
+  deckIds: string[],
+  target: number,
+  gender: DeckGender,
+  rand: () => number,
+  exclude: ReadonlySet<string>,
 ): DeckEntry | null {
   const unique = [...new Set(deckIds)];
   if (unique.length === 0) return null;
@@ -145,7 +187,6 @@ export function buildSessionDeck(
   const decks = (entries as DeckEntry[]).map((d) =>
     exclude.size ? { ...d, names: d.names.filter((c) => !exclude.has(c.id)) } : d,
   );
-  const target = clampSize(size);
 
   if (decks.length === 1) {
     const deck = decks[0];

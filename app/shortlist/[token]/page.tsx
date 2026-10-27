@@ -1,6 +1,6 @@
 import Link from "next/link";
 import ShortlistPage from "@/components/Shortlist";
-import { getSeen, getShortlistView, resolvePartner } from "@/lib/shortlist";
+import { getSeen, getShortlistView, getWishes, resolvePartner } from "@/lib/shortlist";
 import { unseenCounts } from "@/lib/decks";
 import { getDealView } from "@/lib/session";
 import { getDuelsView, inCombinedOrder } from "@/lib/duels";
@@ -30,6 +30,7 @@ export default async function ShortlistRoute({
     );
   }
   const duels = (await getDuelsView(token))!;
+  const { shortlistId } = (await resolvePartner(token))!;
   // Keyed by token: passing a shared phone over remounts, carrying no state across.
   return (
     <ShortlistPage
@@ -39,7 +40,8 @@ export default async function ShortlistRoute({
       expecting={view.expecting}
       entries={inCombinedOrder(view.entries, duels.order)}
       deal={await getDealView(token)}
-      unseen={unseenCounts(await getSeen((await resolvePartner(token))!.shortlistId))}
+      unseen={unseenCounts(await getSeen(shortlistId))}
+      wishes={await getWishes(shortlistId)}
       duels={duels}
     />
   );

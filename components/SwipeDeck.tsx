@@ -147,7 +147,9 @@ export default function SwipeDeck({
         <AnimatePresence>
           <motion.article
             key={`${round}-${card.id}`}
-            className="relative flex flex-1 flex-col items-center justify-center gap-3 rounded-[20px] bg-paper-dim px-8 text-center"
+            className={`relative flex flex-1 flex-col items-center justify-center gap-3 rounded-[20px] px-8 text-center ${
+              card.wish ? "border-2 border-terra bg-paper" : "bg-paper-dim"
+            }`}
             style={reduced ? {} : { x, rotate }}
             drag={reduced ? false : "x"}
             dragDirectionLock
@@ -157,7 +159,7 @@ export default function SwipeDeck({
             animate={reduced ? { opacity: 1 } : { scale: 1, opacity: 1 }}
             transition={{ type: "spring", stiffness: 300, damping: 30 }}
             aria-live="polite"
-            aria-label={`${card.name}, ${card.meaning}`}
+            aria-label={card.wish ? `${card.name}, a wish from one of you` : `${card.name}, ${card.meaning}`}
           >
             {!reduced && (
               <>
@@ -177,20 +179,31 @@ export default function SwipeDeck({
                 </motion.span>
               </>
             )}
+            {card.wish && (
+              <p className="text-xs uppercase tracking-widest text-terra">✎ a wish from one of you</p>
+            )}
             <h2
               className={`font-display font-semibold leading-none ${
                 card.name.length > 8 ? "text-5xl" : "text-6xl"
-              }`}
+              } ${card.wish ? "italic" : ""}`}
             >
               {card.name}
             </h2>
-            <p className="text-sm italic text-ink-soft">{card.say}</p>
-            <p className="rounded-full border border-ink-soft/40 px-3 py-0.5 text-xs uppercase tracking-wider text-ink-soft">
-              {card.origin}
-            </p>
-            <p className="max-w-[260px] text-base leading-relaxed text-ink-soft">
-              {card.meaning}
-            </p>
+            {card.wish ? (
+              <p className="max-w-[260px] text-base leading-relaxed text-ink-soft">
+                No meaning yet — that part is yours.
+              </p>
+            ) : (
+              <>
+                <p className="text-sm italic text-ink-soft">{card.say}</p>
+                <p className="rounded-full border border-ink-soft/40 px-3 py-0.5 text-xs uppercase tracking-wider text-ink-soft">
+                  {card.origin}
+                </p>
+                <p className="max-w-[260px] text-base leading-relaxed text-ink-soft">
+                  {card.meaning}
+                </p>
+              </>
+            )}
           </motion.article>
         </AnimatePresence>
       </div>

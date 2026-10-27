@@ -1,12 +1,14 @@
 import { nanoid } from "nanoid";
-import { buildSessionDeck, DEFAULT_DECK_ID, type DeckEntry } from "./decks";
+import { buildSessionDeck, DEFAULT_DECK_ID, wishCard, type DeckEntry } from "./decks";
 import { MIN_DECK_SIZE, type DeckGender } from "./deck-manifest";
 import { logEvent } from "./events";
 import { getStore, SESSION_TTL_S } from "./store";
 import {
+  clearWishes,
   createShortlist,
   getDeal,
   getSeen,
+  getWishes,
   landMatches,
   markSeen,
   mintPartner,
@@ -108,7 +110,8 @@ function canReplace(live: Awaited<ReturnType<typeof liveDeal>>, partner: Partner
 /**
  * Either Partner deals a new deck from their Shortlist: the dealer is role A,
  * the other Partner role B, on the SAME Shortlist. Seen names never return.
- * Fewer than MIN_DECK_SIZE unseen names → `{ dry }`; a live deck the dealer
+ * Queued wishes empty into this deck, taking slots of `size`.
+ * Fewer than MIN_DECK_SIZE names, wishes included → `{ dry }` (wishes stay queued); a live deck the dealer
  * can't replace → `{ busy }`. Neither creates anything.
  */
 export async function dealSession(
@@ -121,7 +124,8 @@ export async function dealSession(
   if (!partner) return null;
   if (!canReplace(await liveDeal(partner.shortlistId), partner.partner)) return { busy: true };
   const seen = await getSeen(partner.shortlistId);
-  const entry = buildSessionDeck(deckIds, size, gender, Math.random, seen);
+  const wishes = (await getWishes(partner.shortlistId)).map((w) => wishCard(w, deckIds));
+  const entry = buildSessionDeck(deckIds, size, gender, Math.random, seen, wishes);
   if (!entry) return null;
   if (entry.names.length < MIN_DECK_SIZE) return { dry: entry.names.length };
   const other = otherPartner(partner.partner);
@@ -131,6 +135,8 @@ export async function dealSession(
     B: other,
   });
   await recordDeal(partner.shortlistId, { dealer: partner.partner, creatorToken, inviteToken });
+  // shortcut: a slip landing between getWishes and here is dropped; fine at one live deck per Shortlist.
+  if (wishes.length) await clearWishes(partner.shortlistId);
   return { creatorToken, size: entry.names.length };
 }
 

@@ -89,6 +89,7 @@ export default function ShortlistPage({
   deal = null,
   unseen,
   duels,
+  wishes: initialWishes = [],
 }: {
   token: string;
   partner: Partner;
@@ -99,8 +100,11 @@ export default function ShortlistPage({
   /** Unseen names per deck — the builder's size picker counts only these. */
   unseen?: Record<string, GenderCounts>;
   duels: DuelsView;
+  /** Wishes queued for the next deck — open to both partners. */
+  wishes?: string[];
 }) {
   const [sheet, setSheet] = useState(false);
+  const [wishes, setWishes] = useState(initialWishes);
   const [expecting, setExpecting] = useState(initialExpecting);
   const [filter, setFilter] = useState(() => defaultFilter(initialExpecting));
   const shown = visibleEntries(entries, filter);
@@ -148,7 +152,14 @@ export default function ShortlistPage({
                   key={e.id}
                   className={`font-display ${rankClass(i, !!duels.order)}`}
                 >
-                  {e.name}
+                  {e.wish ? (
+                    <>
+                      <i>{e.name}</i>
+                      <span className="ml-2 align-middle font-sans text-xs not-italic text-terra">✎ a wish</span>
+                    </>
+                  ) : (
+                    e.name
+                  )}
                 </li>
               ))}
             </ol>
@@ -217,6 +228,8 @@ export default function ShortlistPage({
           onExpecting={changeExpecting}
           filter={filter}
           onFilter={setFilter}
+          wishes={wishes}
+          onWishes={setWishes}
           onClose={() => setSheet(false)}
         />
       )}

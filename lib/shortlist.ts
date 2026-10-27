@@ -2,6 +2,7 @@ import { nanoid } from "nanoid";
 import { getStore } from "./store";
 import { DECK_GENDERS, type DeckGender } from "./deck-manifest";
 import { logEvent } from "./events";
+import { MAX_WISHES } from "./wishes";
 import { otherPartner, type NameCard, type Partner, type Shortlist } from "./types";
 
 /*
@@ -167,4 +168,37 @@ export async function reissuePartnerLink(token: string): Promise<string | null> 
     partner: rec.partner,
   });
   return fresh;
+}
+
+/* ── Wishes (#23) ──────────────────────────────────────────────────────── */
+
+const wishesKey = (id: string) => `shortlist:${id}:wishes`;
+
+/** Wishes queued for the next deck, in slip order. Open to both partners — they're proposals, not swipes. */
+export async function getWishes(id: string): Promise<string[]> {
+  return (await getStore().get<string[]>(wishesKey(id))) ?? [];
+}
+
+/**
+ * Either partner slips a (cleaned) name in. A name already queued, in any case,
+ * is a no-op. `{ full }` once MAX_WISHES are waiting; null for an unknown token.
+ */
+export async function addWish(
+  token: string,
+  name: string,
+): Promise<{ wishes: string[] } | { full: true } | null> {
+  const rec = await resolvePartner(token);
+  if (!rec) return null;
+  const wishes = await getWishes(rec.shortlistId);
+  if (wishes.some((w) => w.toLocaleLowerCase() === name.toLocaleLowerCase())) return { wishes };
+  if (wishes.length >= MAX_WISHES) return { full: true };
+  // shortcut: read-modify-write, so two slips at the same instant can drop one; RPUSH if it matters.
+  wishes.push(name);
+  await getStore().set(wishesKey(rec.shortlistId), wishes);
+  return { wishes };
+}
+
+/** The queue empties into the deck just dealt. */
+export async function clearWishes(id: string): Promise<void> {
+  await getStore().del(wishesKey(id));
 }

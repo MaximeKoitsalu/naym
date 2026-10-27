@@ -8,6 +8,8 @@ export type NameCard = {
   meaning: string;
   /** As the name is used in this card's culture; absent on decks pinned before tags. */
   gender?: "girl" | "boy" | "unisex";
+  /** A Custom name nobody curated: no say, origin or meaning, and no gender tag. */
+  wish?: true;
 };
 
 export type Swipe = { id: string; liked: boolean };
