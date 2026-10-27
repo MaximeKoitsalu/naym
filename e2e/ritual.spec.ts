@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import type { Browser, Page } from "@playwright/test";
+import type { Browser, Page, Response } from "@playwright/test";
 
 /*
   The flagship E2E: the full ritual in two browser contexts, with the
@@ -101,6 +101,40 @@ test("full ritual: A swipes → handoff → B swipes blind → both reveals matc
   });
   await a.page.getByRole("button", { name: "Tap to reveal" }).click();
   await expect(a.page.getByText("you both chose")).toBeVisible({ timeout: 10_000 });
+
+  // Matches land on BOTH Shortlists; each partner holds only their own link.
+  const shortlistHref = async (p: Page) =>
+    (await p.getByRole("link", { name: "Open our Shortlist" }).getAttribute("href", { timeout: 20_000 }))!;
+  const aShortlist = await shortlistHref(a.page);
+  const bShortlist = await shortlistHref(b.page);
+  expect(aShortlist).not.toBe(bShortlist);
+  for (const [p, own, other] of [
+    [a.page, aShortlist, bShortlist],
+    [b.page, bShortlist, aShortlist],
+  ] as const) {
+    // Tap every response the Shortlist page pulls (document, RSC, API).
+    const bodies: Promise<string>[] = [];
+    const tap = (res: Response) => {
+      if (/\.(js|css|woff2?|png|svg|ico)(\?|$)/.test(res.url())) return;
+      bodies.push(res.text().catch(() => ""));
+    };
+    p.on("response", tap);
+    await p.goto(own);
+    for (const name of ["Astrid", "Liv", "Nils"]) {
+      await expect(p.getByText(name, { exact: true })).toBeVisible();
+    }
+    await p.waitForLoadState("networkidle");
+    p.off("response", tap);
+    // Matches only: no solo like, no other Partner's token — on the wire or in the DOM.
+    const wire = (await Promise.all(bodies)).join("\n") + (await p.content());
+    expect(bodies.length).toBeGreaterThan(0);
+    expect(wire).not.toContain("Saga");
+    expect(wire).not.toContain("Leif");
+    expect(wire).not.toContain(other.split("/").pop()!);
+    // Remembered on this device → the landing offers the way back.
+    await p.goto("/");
+    await expect(p.getByRole("link", { name: "Back to our Shortlist →" })).toHaveAttribute("href", own);
+  }
 
   // THE BLINDNESS CONTRACT: no response B received contains A's solo like
   // ("Saga" was liked only by A and matched by nobody) as swipe data, and

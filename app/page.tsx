@@ -8,6 +8,7 @@ import {
   DEFAULT_DECK_SIZE,
   type DeckChoice,
 } from "@/lib/deck-manifest";
+import { BackToShortlist } from "@/components/Shortlist";
 
 export default function Landing() {
   const router = useRouter();
@@ -39,6 +40,7 @@ export default function Landing() {
 
   return (
     <main className="flex flex-1 flex-col justify-center gap-7 px-8 py-14">
+      <BackToShortlist />
       <h1 className="font-display text-5xl font-semibold lowercase tracking-tight">
         naym
       </h1>

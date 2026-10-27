@@ -1,6 +1,7 @@
 import { nanoid } from "nanoid";
 import { buildSessionDeck, DEFAULT_DECK_ID } from "./decks";
 import { getStore, SESSION_TTL_S } from "./store";
+import { createShortlist, landMatches, mintPartner, partnerToken } from "./shortlist";
 import {
   buildRound2Deck,
   guardSwipes,
@@ -50,6 +51,7 @@ export async function createSession(
   const id = nanoid(12);
   const creatorToken = nanoid(21);
   const inviteToken = nanoid(21);
+  const shortlist = await createShortlist(); // mints Partner 1
   const meta: SessionMeta & { inviteToken: string } = {
     id,
     deckId: entry.deckId,
@@ -60,6 +62,7 @@ export async function createSession(
     createdAt: Date.now(),
     bStartedAt: null,
     round2: null,
+    shortlist: { id: shortlist.id, A: 1, B: 2 },
     inviteToken,
   };
   await store.set(metaKey(id), meta, SESSION_TTL_S);
@@ -116,6 +119,8 @@ export async function putSwipes(
   const completed = isComplete(deck, guarded);
   if (completed && !wasComplete) {
     await logEvent(meta.id, "deck_completed", role, { round });
+    // The last finisher lands the matches on the Shortlist (no-op while the other is mid-deck).
+    await landSessionMatches(meta);
   }
   return { swipes: guarded, completed };
 }
@@ -125,6 +130,8 @@ export async function startB(token: string): Promise<boolean> {
   const resolved = await resolveToken(token);
   if (!resolved || resolved.role !== "B") return false;
   const { meta } = resolved;
+  // Idempotent — mints Partner 2 on the first tap, heals a lost mint on a retry.
+  if (meta.shortlist) await mintPartner(meta.shortlist.id, meta.shortlist.B);
   if (meta.bStartedAt === null) {
     meta.bStartedAt = Date.now();
     await getStore().set(metaKey(meta.id), meta, SESSION_TTL_S);
@@ -155,6 +162,24 @@ export async function armRound2(token: string): Promise<boolean> {
 }
 
 /**
+ * WRITES: copies the server-computed matches (round 1, and round 2 once both
+ * finish it) onto the couple's Shortlist. Idempotent; a no-op until both are done.
+ */
+export async function landSessionMatches(meta: SessionMeta): Promise<void> {
+  if (!meta.shortlist) return;
+  const [a, b] = await Promise.all([getSwipes(meta.id, "A"), getSwipes(meta.id, "B")]);
+  if (!isComplete(meta.deck, a) || !isComplete(meta.deck, b)) return;
+  const cards = intersection(meta.deck, a, b);
+  if (meta.round2) {
+    const [r2a, r2b] = await Promise.all([getSwipes(meta.id, "A", 2), getSwipes(meta.id, "B", 2)]);
+    if (isComplete(meta.round2.deck, r2a) && isComplete(meta.round2.deck, r2b)) {
+      cards.push(...intersection(meta.round2.deck, r2a, r2b));
+    }
+  }
+  await landMatches(meta.shortlist.id, cards);
+}
+
+/**
  * The blindness boundary. Computes the reveal server-side and returns
  * ONLY what the product means to show. Raw swipe arrays never leave here.
  */
@@ -178,6 +203,7 @@ export async function getReveal(
     // Same rule armRound2 applies — the button never offers a 409.
     round2Available: matches.length === 0 && buildRound2Deck(meta.deck, a, b) !== null,
     round2Armed: meta.round2 !== null,
+    shortlistToken: null,
   };
   if (meta.round2) {
     const [r2a, r2b] = await Promise.all([
@@ -190,6 +216,10 @@ export async function getReveal(
         deckSize: meta.round2.deck.length,
       };
     }
+  }
+  if (meta.shortlist) {
+    await landSessionMatches(meta); // heals a landing lost at completion
+    payload.shortlistToken = await partnerToken(meta.shortlist.id, meta.shortlist[role]);
   }
   if (logView) await logEvent(meta.id, "reveal_viewed", role);
   return payload;
