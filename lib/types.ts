@@ -1,3 +1,5 @@
+import type { DeckGender } from "./deck-manifest";
+
 export type NameCard = {
   id: string;
   name: string;
@@ -94,6 +96,7 @@ export type Shortlist = {
   id: string;
   /** Partner tokens; Partner 2 is minted on B's start tap, never on GET. */
   partners: Record<Partner, string | null>;
-  expecting: "girl" | "boy" | "not sure yet";
+  /** Who the couple is naming — the default for later decks and the list filter. */
+  expecting: DeckGender;
   entries: ShortlistEntry[];
 };

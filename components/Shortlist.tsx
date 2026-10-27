@@ -2,7 +2,10 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import type { Shortlist, ShortlistEntry } from "@/lib/types";
+import type { DeckGender } from "@/lib/deck-manifest";
+import { defaultFilter, visibleEntries } from "@/lib/shortlist-filter";
+import type { ShortlistEntry } from "@/lib/types";
+import ShortlistSheet, { CopyLinkButton } from "./ShortlistSheet";
 
 /*
   The Shortlist page — variant C, "the list is the page" (#18): the names set
@@ -19,25 +22,6 @@ function remember(token: string) {
   } catch {
     /* private mode — the link still works, it just isn't remembered */
   }
-}
-
-function CopyLinkButton({ token, autoFocus }: { token: string; autoFocus?: boolean }) {
-  const [copied, setCopied] = useState(false);
-  async function copy() {
-    await navigator.clipboard
-      .writeText(`${window.location.origin}/shortlist/${token}`)
-      .then(() => setCopied(true))
-      .catch(() => null);
-  }
-  return (
-    <button
-      onClick={copy}
-      autoFocus={autoFocus}
-      className="min-h-12 w-full rounded-full border border-ink-soft/25 px-6 font-medium"
-    >
-      {copied ? "Link copied" : "Copy my Shortlist link"}
-    </button>
-  );
 }
 
 /** On the reveal: this partner's OWN link only. */
@@ -82,10 +66,10 @@ export function BackToShortlist() {
   );
 }
 
-const forWhom: Record<Shortlist["expecting"], string> = {
+const forWhom: Record<DeckGender, string> = {
   girl: "daughter",
   boy: "son",
-  "not sure yet": "baby",
+  unsure: "baby",
 };
 
 const day = (ts: number) =>
@@ -93,21 +77,37 @@ const day = (ts: number) =>
 
 export default function ShortlistPage({
   token,
-  expecting,
+  expecting: initialExpecting,
   entries,
 }: {
   token: string;
-  expecting: Shortlist["expecting"];
+  expecting: DeckGender;
   entries: ShortlistEntry[];
 }) {
   const [sheet, setSheet] = useState(false);
+  const [expecting, setExpecting] = useState(initialExpecting);
+  const [filter, setFilter] = useState(() => defaultFilter(initialExpecting));
+  const shown = visibleEntries(entries, filter);
   useEffect(() => remember(token), [token]);
-  useEffect(() => {
-    if (!sheet) return;
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setSheet(false);
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [sheet]);
+
+  function changeExpecting(g: DeckGender) {
+    // Optimistic: the filter jumps to the new gender; a failed save reverts both.
+    const before = expecting;
+    setExpecting(g);
+    setFilter(defaultFilter(g));
+    fetch("/api/shortlist/expecting", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ token, expecting: g }),
+    })
+      .then((r) => {
+        if (!r.ok) throw new Error();
+      })
+      .catch(() => {
+        setExpecting(before);
+        setFilter(defaultFilter(before));
+      });
+  }
 
   return (
     <main className="flex flex-1 flex-col pb-40">
@@ -119,10 +119,14 @@ export default function ShortlistPage({
           <p className="mt-6 font-display text-2xl text-ink-soft">
             No names yet — your matches will land here.
           </p>
+        ) : shown.length === 0 ? (
+          <p className="mt-6 font-display text-2xl text-ink-soft">
+            No {filter} names yet — the filter is in the sheet.
+          </p>
         ) : (
           <>
             <ol className="mt-6 space-y-3">
-              {entries.map((e, i) => (
+              {shown.map((e, i) => (
                 <li
                   key={e.id}
                   className={`font-display ${i < 3 ? "text-4xl" : "text-2xl text-ink-soft"}`}
@@ -132,8 +136,8 @@ export default function ShortlistPage({
               ))}
             </ol>
             <p className="mt-8 text-sm text-ink-soft" suppressHydrationWarning>
-              {entries.length} {entries.length === 1 ? "name" : "names"} you both love · since{" "}
-              {day(entries[0].matchedAt)}
+              {shown.length} {shown.length === 1 ? "name" : "names"} you both love · since{" "}
+              {day(shown[0].matchedAt)}
             </p>
           </>
         )}
@@ -142,7 +146,7 @@ export default function ShortlistPage({
         onClick={() => setSheet(true)}
         className="mx-auto mt-4 min-h-11 text-sm text-ink-soft underline"
       >
-        links
+        filter & links
       </button>
 
       {/* No next-step button until #21: a link to / would mint a second Shortlist. */}
@@ -151,32 +155,14 @@ export default function ShortlistPage({
       </p>
 
       {sheet && (
-        <div
-          className="fixed inset-0 z-10 flex items-end bg-ink/30"
-          onClick={() => setSheet(false)}
-        >
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-label="Shortlist links"
-            className="mx-auto w-full max-w-[480px] space-y-4 rounded-t-[20px] bg-paper p-6 pb-24"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <p className="text-sm text-ink-soft">
-              naming a: <b>{expecting}</b>
-            </p>
-            <p className="text-sm leading-relaxed text-ink-soft">
-              This link is yours alone. Your partner has their own.
-            </p>
-            <CopyLinkButton token={token} autoFocus />
-            <button
-              onClick={() => setSheet(false)}
-              className="min-h-11 w-full text-sm text-ink-soft underline"
-            >
-              close
-            </button>
-          </div>
-        </div>
+        <ShortlistSheet
+          token={token}
+          expecting={expecting}
+          onExpecting={changeExpecting}
+          filter={filter}
+          onFilter={setFilter}
+          onClose={() => setSheet(false)}
+        />
       )}
     </main>
   );

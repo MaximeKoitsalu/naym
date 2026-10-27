@@ -1,5 +1,6 @@
 import { nanoid } from "nanoid";
 import { getStore } from "./store";
+import { DECK_GENDERS, type DeckGender } from "./deck-manifest";
 import type { NameCard, Partner, Shortlist } from "./types";
 
 /*
@@ -14,14 +15,16 @@ const shortlistKey = (id: string) => `shortlist:${id}`;
 const ptokKey = (t: string) => `ptok:${t}`;
 
 /** A new Shortlist with Partner 1 minted; Partner 2 waits for B's start tap. */
-export async function createShortlist(): Promise<{ id: string; token: string }> {
+export async function createShortlist(
+  expecting: DeckGender = "unsure",
+): Promise<{ id: string; token: string }> {
   const id = nanoid(12);
   const token = nanoid(21);
   const store = getStore();
   const shortlist: Shortlist = {
     id,
     partners: { 1: token, 2: null },
-    expecting: "not sure yet",
+    expecting,
     entries: [],
   };
   await store.set(shortlistKey(id), shortlist);
@@ -76,7 +79,20 @@ export async function getShortlistView(token: string) {
   if (!shortlist) return null;
   return {
     partner: rec.partner,
-    expecting: shortlist.expecting,
+    // Shortlists made before the picker stored "not sure yet".
+    expecting: DECK_GENDERS.find((g) => g === shortlist.expecting) ?? "unsure",
     entries: shortlist.entries,
   };
+}
+
+/** Either partner can change who they're naming ("finding out"). Nothing is deleted. */
+export async function setExpecting(token: string, expecting: DeckGender): Promise<boolean> {
+  const store = getStore();
+  const rec = await store.get<PartnerRecord>(ptokKey(token));
+  if (!rec) return false;
+  const shortlist = await store.get<Shortlist>(shortlistKey(rec.shortlistId));
+  if (!shortlist) return false;
+  shortlist.expecting = expecting;
+  await store.set(shortlistKey(rec.shortlistId), shortlist);
+  return true;
 }

@@ -57,7 +57,7 @@ export async function createSession(
   const id = nanoid(12);
   const creatorToken = nanoid(21);
   const inviteToken = nanoid(21);
-  const shortlist = await createShortlist(); // mints Partner 1
+  const shortlist = await createShortlist(gender); // mints Partner 1
   const meta: SessionMeta & { inviteToken: string } = {
     id,
     deckId: entry.deckId,
