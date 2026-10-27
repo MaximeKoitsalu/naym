@@ -49,7 +49,6 @@ export async function createSession(
   const entry = buildSessionDeck(
     Array.isArray(deckIds) ? deckIds : [deckIds],
     size,
-    Math.random,
     gender,
   );
   if (!entry) return null; // unknown deck or empty pick — route turns this into a 400

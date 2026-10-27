@@ -20,7 +20,8 @@ import {
   lightweight manifest in deck-manifest.ts, not these imports.
 */
 
-type DeckFile = { deckId: string; title: string; names: NameCard[] };
+type TaggedCard = NameCard & { gender: NonNullable<NameCard["gender"]> };
+type DeckFile = { deckId: string; title: string; names: TaggedCard[] };
 
 export type DeckEntry = {
   deckId: string;
@@ -29,8 +30,21 @@ export type DeckEntry = {
   version: string;
 };
 
-// JSON imports widen `gender` to string; test/decks.test.ts checks every tag.
-const FILES = [nordic, greek, german, italian, french] as DeckFile[];
+const isTag = (g: string): g is TaggedCard["gender"] =>
+  g === "girl" || g === "boy" || g === "unisex";
+
+// JSON imports widen `gender` to string: narrow it, failing loudly on a bad or missing tag.
+function tagged(f: typeof nordic): DeckFile {
+  return {
+    ...f,
+    names: f.names.map((n) => {
+      if (!isTag(n.gender)) throw new Error(`${f.deckId}/${n.id}: bad gender tag "${n.gender}"`);
+      return { ...n, gender: n.gender };
+    }),
+  };
+}
+
+const FILES: DeckFile[] = [nordic, greek, german, italian, french].map(tagged);
 
 const REGISTRY = new Map<string, DeckEntry>(
   FILES.map((f) => [
@@ -108,8 +122,8 @@ function dealOrder(
 export function buildSessionDeck(
   deckIds: string[],
   size: number = DEFAULT_DECK_SIZE,
-  rand: () => number = Math.random,
   gender: DeckGender = "unsure",
+  rand: () => number = Math.random,
 ): DeckEntry | null {
   const unique = [...new Set(deckIds)];
   if (unique.length === 0) return null;

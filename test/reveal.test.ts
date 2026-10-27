@@ -10,7 +10,7 @@ import {
 import type { NameCard, Swipe } from "@/lib/types";
 
 const deck: NameCard[] = ["astrid", "nils", "liv", "erik", "saga", "leif"].map(
-  (id) => ({ id, name: id, say: id, origin: "test", meaning: id, gender: "unisex" }),
+  (id) => ({ id, name: id, say: id, origin: "test", meaning: id }),
 );
 
 const swipe = (id: string, liked: boolean): Swipe => ({ id, liked });

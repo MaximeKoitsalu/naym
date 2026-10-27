@@ -14,7 +14,7 @@ import {
 const GENDER_OPTIONS: { value: DeckGender; label: string }[] = [
   { value: "girl", label: "a girl" },
   { value: "boy", label: "a boy" },
-  { value: "unsure", label: "not sure yet" },
+  { value: "unsure", label: "not sure yet" }, // "unsure" is the code name for "not sure yet"
 ];
 
 export default function Landing() {
@@ -153,7 +153,7 @@ export default function Landing() {
         </div>
         <p className="min-h-5 text-sm text-ink-soft" aria-live="polite">
           {picked.length > 0 && DECK_SIZE_PRESETS.some((n) => n > pool)
-            ? "add a region for more"
+            ? "add a deck for more"
             : ""}
         </p>
       </fieldset>
