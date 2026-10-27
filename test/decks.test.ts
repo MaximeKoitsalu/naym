@@ -6,10 +6,14 @@ import {
   DEFAULT_DECK_ID,
 } from "@/lib/decks";
 import {
+  DECK_MANIFEST,
   DEFAULT_DECK_SIZE,
   MAX_DECK_SIZE,
   MIN_DECK_SIZE,
+  poolSize,
 } from "@/lib/deck-manifest";
+import { POST as postSession } from "@/app/api/session/route";
+import { NextRequest } from "next/server";
 import { createSession, getStateView } from "@/lib/session";
 
 // Deterministic "random" for shuffle-bearing tests.
@@ -68,6 +72,7 @@ describe("deck blending", () => {
     const blend = buildSessionDeck(
       ["nordic-v1", "greek-v1"],
       MAX_DECK_SIZE,
+      "unsure",
       seq(0.3, 0.7, 0.1, 0.9, 0.5),
     )!;
     expect(blend.names).toHaveLength(MAX_DECK_SIZE);
@@ -83,6 +88,7 @@ describe("deck blending", () => {
     const blend = buildSessionDeck(
       ["nordic-v1", "italian-v1", "french-v1"],
       MAX_DECK_SIZE,
+      "unsure",
       seq(0.2, 0.8, 0.4, 0.6),
     )!;
     expect(blend.names).toHaveLength(MAX_DECK_SIZE);
@@ -96,7 +102,7 @@ describe("deck blending", () => {
   });
 
   it("all five origins blend evenly to 50", () => {
-    const blend = buildSessionDeck(allDeckIds(), MAX_DECK_SIZE, seq(0.5, 0.25, 0.75))!;
+    const blend = buildSessionDeck(allDeckIds(), MAX_DECK_SIZE, "unsure", seq(0.5, 0.25, 0.75))!;
     expect(blend.names).toHaveLength(MAX_DECK_SIZE);
   });
 
@@ -123,7 +129,7 @@ describe("deck size", () => {
   });
 
   it("a blend at a non-max size still splits evenly", () => {
-    const deck = buildSessionDeck(["nordic-v1", "greek-v1"], 20, seq(0.3, 0.7, 0.1, 0.9, 0.5))!;
+    const deck = buildSessionDeck(["nordic-v1", "greek-v1"], 20, "unsure", seq(0.3, 0.7, 0.1, 0.9, 0.5))!;
     expect(deck.names).toHaveLength(20);
     const nordicIds = new Set(getDeckEntry("nordic-v1")!.names.map((n) => n.id));
     expect(deck.names.filter((n) => nordicIds.has(n.id))).toHaveLength(10);
@@ -184,5 +190,105 @@ describe("session deck selection", () => {
     const s = (await createSession("greek-v1", 35))!;
     const view = (await getStateView(s.creatorToken))!;
     expect(view.deck).toHaveLength(35);
+  });
+});
+
+describe("gender-aware decks", () => {
+  const count = (names: { gender?: string }[], g: string) =>
+    names.filter((n) => n.gender === g).length;
+
+  it("every card carries a valid gender tag, including the settled exceptions", () => {
+    const byId = new Map(
+      allDeckIds().flatMap((id) => getDeckEntry(id)!.names.map((n) => [n.id, n.gender])),
+    );
+    for (const g of byId.values()) expect(["girl", "boy", "unisex"]).toContain(g);
+    for (const id of ["aris", "jonas", "luca", "nico", "pierre", "hjalmar"]) {
+      expect(byId.get(id), id).toBe("boy");
+    }
+    for (const id of ["elektra", "noemi", "leni", "romy"]) expect(byId.get(id), id).toBe("girl");
+    expect(byId.get("camille")).toBe("unisex");
+  });
+
+  it("the manifest's counts and samples match the deck files", () => {
+    for (const m of DECK_MANIFEST) {
+      const names = getDeckEntry(m.id)!.names;
+      expect(m.count, m.id).toEqual({
+        girl: count(names, "girl"),
+        boy: count(names, "boy"),
+        unisex: count(names, "unisex"),
+      });
+      for (const g of ["girl", "boy"] as const) {
+        for (const sample of m.sample[g].split(" · ")) {
+          const card = names.find((n) => n.name === sample);
+          expect(card?.gender, `${m.id}/${sample}`).toMatch(new RegExp(`${g}|unisex`));
+        }
+      }
+    }
+  });
+
+  it("a girl deck holds only girl and unisex cards", () => {
+    const deck = buildSessionDeck(["french-v1"], 20, "girl")!;
+    expect(deck.names).toHaveLength(20);
+    expect(count(deck.names, "boy")).toBe(0);
+  });
+
+  it("unisex counts for both: the full french girl and boy pools include Camille", () => {
+    for (const g of ["girl", "boy"] as const) {
+      const deck = buildSessionDeck(["french-v1"], 999, g)!;
+      expect(deck.names.map((n) => n.id), g).toContain("camille");
+      expect(deck.names).toHaveLength(poolSize(["french-v1"], g));
+    }
+  });
+
+  it("not sure yet deals an even girl/boy split, in a blend too", () => {
+    const single = buildSessionDeck(["greek-v1"], 20, "unsure")!;
+    expect([count(single.names, "girl"), count(single.names, "boy")]).toEqual([10, 10]);
+    const blend = buildSessionDeck(
+      ["nordic-v1", "italian-v1", "french-v1"],
+      MAX_DECK_SIZE,
+      "unsure",
+    )!;
+    expect(blend.names).toHaveLength(MAX_DECK_SIZE);
+    expect(count(blend.names, "girl")).toBe(25);
+    expect(count(blend.names, "boy")).toBe(25);
+  });
+
+  it("not sure yet fills the short side from unisex", () => {
+    // french: 24 girls, 25 boys, Camille. rand 0.9 → girls deal first, so at 49
+    // the girl side runs dry on its 25th turn and takes Camille.
+    const deck = buildSessionDeck(["french-v1"], 49, "unsure", () => 0.9)!;
+    expect(count(deck.names, "girl")).toBe(24);
+    expect(count(deck.names, "unisex")).toBe(1);
+    expect(count(deck.names, "boy")).toBe(24);
+  });
+
+  it("pool size: one region holds 25 per gender, so 35+ needs another region", () => {
+    expect(poolSize(["nordic-v1"], "girl")).toBe(25);
+    expect(poolSize(["french-v1"], "boy")).toBe(26);
+    expect(poolSize(["nordic-v1"], "unsure")).toBe(50);
+    expect(poolSize(["nordic-v1", "greek-v1"], "girl")).toBe(50);
+    // The server clamp deals what the pool holds, never a padded deck.
+    expect(buildSessionDeck(["nordic-v1"], MAX_DECK_SIZE, "boy")!.names).toHaveLength(25);
+  });
+
+  it("POST /api/session validates the gender", async () => {
+    const post = (body: unknown) =>
+      postSession(
+        new NextRequest("http://localhost/api/session", {
+          method: "POST",
+          body: JSON.stringify(body),
+        }),
+      );
+    expect((await post({ deckIds: ["greek-v1"], gender: "cat" })).status).toBe(400);
+    const ok = await post({ deckIds: ["greek-v1"], size: 20, gender: "girl" });
+    const view = (await getStateView((await ok.json()).creatorToken))!;
+    expect(count(view.deck, "boy")).toBe(0);
+  });
+
+  it("createSession pins the gender-filtered deck", async () => {
+    const s = (await createSession("greek-v1", 20, "boy"))!;
+    const deck = (await getStateView(s.creatorToken))!.deck;
+    expect(deck).toHaveLength(20);
+    expect(count(deck, "girl")).toBe(0);
   });
 });

@@ -1,5 +1,6 @@
 import { nanoid } from "nanoid";
 import { buildSessionDeck, DEFAULT_DECK_ID } from "./decks";
+import type { DeckGender } from "./deck-manifest";
 import { getStore, SESSION_TTL_S } from "./store";
 import { createShortlist, landMatches, mintPartner, partnerToken } from "./shortlist";
 import {
@@ -43,9 +44,14 @@ export async function logEvent(
 export async function createSession(
   deckIds: string | string[] = DEFAULT_DECK_ID,
   size?: number,
+  gender: DeckGender = "unsure",
 ): Promise<{ creatorToken: string; sessionId: string } | null> {
   // One origin → that deck verbatim (at max size); several → an even blend.
-  const entry = buildSessionDeck(Array.isArray(deckIds) ? deckIds : [deckIds], size);
+  const entry = buildSessionDeck(
+    Array.isArray(deckIds) ? deckIds : [deckIds],
+    size,
+    gender,
+  );
   if (!entry) return null; // unknown deck or empty pick — route turns this into a 400
   const store = getStore();
   const id = nanoid(12);
