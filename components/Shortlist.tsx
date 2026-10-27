@@ -59,8 +59,10 @@ const forWhom: Record<DeckGender, string> = {
   unsure: "baby",
 };
 
+// One fixed locale and zone, so server and client render the same string.
+// shortcut: UTC can show the day before for late-evening matches east of it; switch to the viewer's zone after hydration if that matters.
 const day = (ts: number) =>
-  new Date(ts).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  new Date(ts).toLocaleDateString("en-GB", { month: "short", day: "numeric", timeZone: "UTC" });
 
 /**
  * Same-device mode: when this phone holds both Partners' links. Passing it
@@ -88,6 +90,7 @@ export default function ShortlistPage({
   entries,
   deal = null,
   unseen,
+  samples,
   duels,
   wishes: initialWishes = [],
 }: {
@@ -99,6 +102,8 @@ export default function ShortlistPage({
   deal?: DealView | null;
   /** Unseen names per deck — the builder's size picker counts only these. */
   unseen?: Record<string, GenderCounts>;
+  /** Sample names per deck and gender with Seen ones left out — the builder's labels. */
+  samples?: Record<string, Record<DeckGender, string>>;
   duels: DuelsView;
   /** Wishes queued for the next deck — open to both partners. */
   wishes?: string[];
@@ -163,7 +168,7 @@ export default function ShortlistPage({
                 </li>
               ))}
             </ol>
-            <p className="mt-8 text-sm text-ink-soft" suppressHydrationWarning>
+            <p className="mt-8 text-sm text-ink-soft">
               {shown.length === entries.length ? shown.length : `${shown.length} of ${entries.length}`}{" "}
               {entries.length === 1 ? "name" : "names"} you both love · since{" "}
               {day(Math.min(...entries.map((e) => e.matchedAt)))}
@@ -206,7 +211,7 @@ export default function ShortlistPage({
           <Link
             href={`/?deal=${token}&gender=${expecting}${
               unseen ? `&pool=${encodeURIComponent(JSON.stringify(unseen))}` : ""
-            }${wishes.length ? `&wishes=${wishes.length}` : ""}`}
+            }${samples ? `&samples=${encodeURIComponent(JSON.stringify(samples))}` : ""}${wishes.length ? `&wishes=${wishes.length}` : ""}`}
             className={`min-h-14 rounded-full px-8 py-4 text-center text-lg font-medium ${
               deal || duelsStep(duels) ? "border border-ink-soft/25" : "bg-ink text-paper"
             }`}

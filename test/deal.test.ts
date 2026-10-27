@@ -11,7 +11,7 @@ import {
   startB,
 } from "@/lib/session";
 import { getSeen, getShortlistView } from "@/lib/shortlist";
-import { buildSessionDeck, getDeckEntry, unseenCounts } from "@/lib/decks";
+import { buildSessionDeck, getDeckEntry, unseenCounts, unseenSamples } from "@/lib/decks";
 import { MAX_DECK_SIZE, poolSize } from "@/lib/deck-manifest";
 import { POST as postSession } from "@/app/api/session/route";
 
@@ -209,6 +209,19 @@ describe("the builder's unseen pool", () => {
     expect(poolSize(["nordic-v1"], "girl", unseen)).toBe(5);
     expect(poolSize(["nordic-v1", "greek-v1"], "girl", unseen)).toBe(30);
     expect(poolSize(["nordic-v1"], "girl")).toBe(25); // no override → the manifest
+  });
+});
+
+describe("unseen samples", () => {
+  it("drops Seen names from the builder's sample labels, per gender", () => {
+    const samples = unseenSamples(new Set(["freja", "leif"]));
+    expect(samples["nordic-v1"].girl).toBe("Astrid · Saga");
+    expect(samples["nordic-v1"].boy).toBe("Axel · Viggo");
+    expect(samples["greek-v1"].girl).toBe("Penelope · Daphne · Thalia");
+  });
+
+  it("leaves an empty label once every sample name is Seen", () => {
+    expect(unseenSamples(new Set(["astrid", "saga", "freja"]))["nordic-v1"].girl).toBe("");
   });
 });
 

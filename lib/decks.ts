@@ -8,6 +8,8 @@ import type { NameCard } from "./types";
 import { sameName } from "./wishes";
 import { shuffle } from "./reveal";
 import {
+  DECK_GENDERS,
+  DECK_MANIFEST,
   DEFAULT_DECK_SIZE,
   MAX_DECK_SIZE,
   MIN_DECK_SIZE,
@@ -79,6 +81,19 @@ export function unseenCounts(seen: ReadonlySet<string>): Record<string, GenderCo
   for (const [id, deck] of REGISTRY) {
     const c = (out[id] = { girl: 0, boy: 0, unisex: 0 });
     for (const n of deck.names) if (!seen.has(n.id) && n.gender) c[n.gender]++;
+  }
+  return out;
+}
+
+/** Per deck and gender, the manifest's sample names minus Seen ones — the dealing builder's labels. */
+export function unseenSamples(seen: ReadonlySet<string>): Record<string, Record<DeckGender, string>> {
+  const out: Record<string, Record<DeckGender, string>> = {};
+  for (const m of DECK_MANIFEST) {
+    const names = REGISTRY.get(m.id)?.names ?? [];
+    const isSeen = (n: string) => names.some((c) => sameName(c.name, n) && seen.has(c.id));
+    out[m.id] = Object.fromEntries(
+      DECK_GENDERS.map((g) => [g, m.sample[g].split(" · ").filter((n) => !isSeen(n)).join(" · ")]),
+    ) as Record<DeckGender, string>;
   }
   return out;
 }
