@@ -20,6 +20,7 @@ import {
   isComplete,
 } from "./reveal";
 import type {
+  DealView,
   EventName,
   NameCard,
   Partner,
@@ -96,19 +97,42 @@ async function openSession(
   return { creatorToken, inviteToken, sessionId: id };
 }
 
+/** The live dealt deck on a Shortlist: dealt, not expired, not finished by both. */
+async function liveDeal(shortlistId: string) {
+  const deal = await getDeal(shortlistId);
+  if (!deal) return null;
+  const resolved = await resolveToken(deal.creatorToken);
+  if (!resolved) return null; // expired
+  const { meta } = resolved;
+  const [a, b] = await Promise.all([getSwipes(meta.id, "A"), getSwipes(meta.id, "B")]);
+  const aDone = isComplete(meta.deck, a);
+  if (aDone && isComplete(meta.deck, b)) return null;
+  return { deal, meta, aDone };
+}
+
+/**
+ * One live deck per Shortlist: only its dealer may replace it, and only
+ * before the other Partner taps Start — a deck is never silently abandoned.
+ */
+function canReplace(live: Awaited<ReturnType<typeof liveDeal>>, partner: Partner): boolean {
+  return !live || (live.deal.dealer === partner && live.meta.bStartedAt === null);
+}
+
 /**
  * Either Partner deals a new deck from their Shortlist: the dealer is role A,
  * the other Partner role B, on the SAME Shortlist. Seen names never return.
- * Fewer than MIN_DECK_SIZE unseen names → `{ dry }`, nothing is created.
+ * Fewer than MIN_DECK_SIZE unseen names → `{ dry }`; a live deck the dealer
+ * can't replace → `{ busy }`. Neither creates anything.
  */
 export async function dealSession(
   partnerTok: string,
   deckIds: string[],
   size?: number,
   gender: DeckGender = "unsure",
-): Promise<{ creatorToken: string; size: number } | { dry: number } | null> {
+): Promise<{ creatorToken: string; size: number } | { dry: number } | { busy: true } | null> {
   const partner = await resolvePartner(partnerTok);
   if (!partner) return null;
+  if (!canReplace(await liveDeal(partner.shortlistId), partner.partner)) return { busy: true };
   const seen = await getSeen(partner.shortlistId);
   const entry = buildSessionDeck(deckIds, size, gender, Math.random, seen);
   if (!entry) return null;
@@ -124,27 +148,24 @@ export async function dealSession(
 }
 
 /**
- * The latest dealt deck as ONE Partner's Shortlist shows it: the dealer gets
- * their own A link; the other Partner sees it only once the dealer has
- * finished, with their own B link (B binds on the Start tap, not here).
- * Never carries the other Partner's session token. Null once both finished.
+ * The live dealt deck as ONE Partner's Shortlist shows it: the dealer gets
+ * their own A link; the other Partner gets their own B link only once the
+ * dealer has finished (B binds on the Start tap, not here). Never carries
+ * the other Partner's session token. Null when no deck is live.
  */
-export async function getDealView(
-  partnerTok: string,
-): Promise<{ mine: boolean; size: number; href: string } | null> {
+export async function getDealView(partnerTok: string): Promise<DealView | null> {
   const partner = await resolvePartner(partnerTok);
   if (!partner) return null;
-  const deal = await getDeal(partner.shortlistId);
-  if (!deal) return null;
-  const resolved = await resolveToken(deal.creatorToken);
-  if (!resolved) return null; // expired
-  const { meta } = resolved;
-  const [a, b] = await Promise.all([getSwipes(meta.id, "A"), getSwipes(meta.id, "B")]);
-  const aDone = isComplete(meta.deck, a);
-  if (aDone && isComplete(meta.deck, b)) return null;
-  const size = meta.deck.length;
-  if (partner.partner === deal.dealer) return { mine: true, size, href: `/s/${deal.creatorToken}` };
-  return aDone ? { mine: false, size, href: `/s/${deal.inviteToken}` } : null;
+  const live = await liveDeal(partner.shortlistId);
+  if (!live) return null;
+  const { deal, meta, aDone } = live;
+  const mine = partner.partner === deal.dealer;
+  return {
+    mine,
+    size: meta.deck.length,
+    href: mine ? `/s/${deal.creatorToken}` : aDone ? `/s/${deal.inviteToken}` : null,
+    canDeal: canReplace(live, partner.partner),
+  };
 }
 
 export async function resolveToken(token: string): Promise<

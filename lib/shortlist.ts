@@ -103,8 +103,9 @@ export async function getSeen(id: string): Promise<Set<string>> {
 }
 
 /**
- * Idempotent. shortcut: read-modify-write like landMatches — two sessions
- * completing at the same instant can drop one; its next reveal view re-marks it.
+ * Idempotent. shortcut: read-modify-write, but a Shortlist has one live deck
+ * at a time (dealSession), so it only races with itself writing the same ids;
+ * use SADD if decks ever run concurrently.
  */
 export async function markSeen(id: string, cardIds: string[]): Promise<void> {
   const seen = await getSeen(id);
@@ -113,7 +114,7 @@ export async function markSeen(id: string, cardIds: string[]): Promise<void> {
   await getStore().set(seenKey(id), [...seen]);
 }
 
-/** A new deal replaces the last one — an unfinished deck is simply abandoned. */
+/** Replaces the last deal — dealSession only allows that when nobody loses a started deck. */
 export async function recordDeal(id: string, deal: DealRecord): Promise<void> {
   await getStore().set(dealKey(id), deal);
 }

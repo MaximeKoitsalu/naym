@@ -11,8 +11,8 @@ import {
   startB,
 } from "@/lib/session";
 import { getSeen, getShortlistView } from "@/lib/shortlist";
-import { buildSessionDeck, getDeckEntry } from "@/lib/decks";
-import { deckGenderFor, MAX_DECK_SIZE } from "@/lib/deck-manifest";
+import { buildSessionDeck, getDeckEntry, unseenCounts } from "@/lib/decks";
+import { deckGenderFor, MAX_DECK_SIZE, poolSize } from "@/lib/deck-manifest";
 import { POST as postSession } from "@/app/api/session/route";
 
 /*
@@ -140,12 +140,13 @@ describe("the other Partner's view of a dealt deck", () => {
     const { p1, p2 } = await couple("greek-v1", 10);
     const dealt = (await dealSession(p1, ["nordic-v1"], 20)) as { creatorToken: string };
 
-    expect(await getDealView(p2)).toBeNull(); // dealer still swiping
-    expect(await getDealView(p1)).toEqual({ mine: true, size: 20, href: `/s/${dealt.creatorToken}` });
+    // Dealer still swiping: the other Partner gets no link yet.
+    expect(await getDealView(p2)).toEqual({ mine: false, size: 20, href: null, canDeal: false });
+    expect(await getDealView(p1)).toEqual({ mine: true, size: 20, href: `/s/${dealt.creatorToken}`, canDeal: true });
 
     const invite = await aFinishes(dealt.creatorToken);
     const view = (await getDealView(p2))!;
-    expect(view).toEqual({ mine: false, size: 20, href: `/s/${invite}` });
+    expect(view).toEqual({ mine: false, size: 20, href: `/s/${invite}`, canDeal: false });
     expect(JSON.stringify(view)).not.toContain(dealt.creatorToken);
 
     await getStateView(invite); // a prefetcher's GET
@@ -156,6 +157,58 @@ describe("the other Partner's view of a dealt deck", () => {
     await swipeAll(invite, () => false);
     expect(await getDealView(p1)).toBeNull();
     expect(await getDealView(p2)).toBeNull();
+  });
+});
+
+describe("one live deck per Shortlist", () => {
+  it("nobody can deal over a deck the other Partner has started", async () => {
+    const { p1, p2 } = await couple("greek-v1", 10);
+    const dealt = (await dealSession(p1, ["nordic-v1"], 20)) as { creatorToken: string };
+    // The other Partner can't replace it, even before it reaches them.
+    expect(await dealSession(p2, ["italian-v1"], 20)).toEqual({ busy: true });
+
+    const invite = await aFinishes(dealt.creatorToken);
+    await startB(invite);
+    expect(await dealSession(p1, ["italian-v1"], 20)).toEqual({ busy: true });
+    expect(await dealSession(p2, ["italian-v1"], 20)).toEqual({ busy: true });
+    expect((await getDealView(p1))!.canDeal).toBe(false);
+    expect((await getDealView(p2))!.href).toBe(`/s/${invite}`); // their link never disappears
+
+    await swipeAll(invite, () => false); // finished → dealing reopens for both
+    expect(await dealSession(p2, ["italian-v1"], 20)).toMatchObject({ size: 20 });
+  });
+
+  it("the dealer may replace their own deck before the other Partner starts", async () => {
+    const { p1 } = await couple("greek-v1", 10);
+    const first = (await dealSession(p1, ["nordic-v1"], 20)) as { creatorToken: string };
+    await aFinishes(first.creatorToken);
+    const second = (await dealSession(p1, ["italian-v1"], 20)) as { creatorToken: string };
+    expect((await getDealView(p1))!.href).toBe(`/s/${second.creatorToken}`);
+  });
+
+  it("POST /api/session answers 409 on a busy Shortlist", async () => {
+    const { p1, p2 } = await couple("greek-v1", 10);
+    await dealSession(p1, ["nordic-v1"], 20);
+    const res = await postSession(
+      new NextRequest("http://localhost/api/session", {
+        method: "POST",
+        body: JSON.stringify({ deckIds: ["italian-v1"], size: 20, shortlistToken: p2 }),
+      }),
+    );
+    expect(res.status).toBe(409);
+    expect(await res.json()).not.toHaveProperty("left");
+  });
+});
+
+describe("the builder's unseen pool", () => {
+  it("counts only unseen names, so unfillable sizes are disabled up front", async () => {
+    const { creatorToken } = await couple("nordic-v1", 20, "girl");
+    const { shortlist } = (await resolveToken(creatorToken))!.meta;
+    const unseen = unseenCounts(await getSeen(shortlist!.id));
+    expect(unseen["nordic-v1"]).toEqual({ girl: 5, boy: 25, unisex: 0 });
+    expect(poolSize(["nordic-v1"], "girl", unseen)).toBe(5);
+    expect(poolSize(["nordic-v1", "greek-v1"], "girl", unseen)).toBe(30);
+    expect(poolSize(["nordic-v1"], "girl")).toBe(25); // no override → the manifest
   });
 });
 

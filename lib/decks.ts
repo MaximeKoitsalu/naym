@@ -11,6 +11,7 @@ import {
   MAX_DECK_SIZE,
   MIN_DECK_SIZE,
   type DeckGender,
+  type GenderCounts,
 } from "./deck-manifest";
 
 /*
@@ -66,6 +67,16 @@ export function getDeckEntry(deckId: string): DeckEntry | null {
 
 export function allDeckIds(): string[] {
   return [...REGISTRY.keys()];
+}
+
+/** Per deck, the gender counts of names NOT in `seen` — the dealing builder's pool. */
+export function unseenCounts(seen: ReadonlySet<string>): Record<string, GenderCounts> {
+  const out: Record<string, GenderCounts> = {};
+  for (const [id, deck] of REGISTRY) {
+    const c = (out[id] = { girl: 0, boy: 0, unisex: 0 });
+    for (const n of deck.names) if (!seen.has(n.id) && n.gender) c[n.gender]++;
+  }
+  return out;
 }
 
 /** Clamp a requested deck size into [MIN_DECK_SIZE, MAX_DECK_SIZE], defaulting garbage input. */

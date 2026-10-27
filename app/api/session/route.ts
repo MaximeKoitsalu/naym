@@ -16,9 +16,11 @@ export async function POST(req: NextRequest) {
   if (!gender) return NextResponse.json({ error: "unknown gender" }, { status: 400 });
   // Dealt from a Shortlist: same couple, Seen names excluded.
   if (typeof body?.shortlistToken === "string") {
+    // deckIds may be one id, a list, or absent — dealSession wants a list.
     const dealt = await dealSession(body.shortlistToken, [deckIds ?? []].flat(), size, gender);
     if (!dealt) return NextResponse.json({ error: "unknown deck or shortlist" }, { status: 400 });
     if ("dry" in dealt) return NextResponse.json({ error: "pool dry", left: dealt.dry }, { status: 409 });
+    if ("busy" in dealt) return NextResponse.json({ error: "deck in progress" }, { status: 409 });
     return NextResponse.json(dealt);
   }
   const session = await createSession(deckIds, size, gender);

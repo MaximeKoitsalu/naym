@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import type { Shortlist, ShortlistEntry } from "@/lib/types";
-import { deckGenderFor } from "@/lib/deck-manifest";
+import type { DealView, Shortlist, ShortlistEntry } from "@/lib/types";
+import { deckGenderFor, type GenderCounts } from "@/lib/deck-manifest";
 
 /*
   The Shortlist page — variant C, "the list is the page" (#18): the names set
@@ -97,12 +97,15 @@ export default function ShortlistPage({
   expecting,
   entries,
   deal = null,
+  unseen,
 }: {
   token: string;
   expecting: Shortlist["expecting"];
   entries: ShortlistEntry[];
-  /** The latest dealt deck as this Partner sees it (getDealView). */
-  deal?: { mine: boolean; size: number; href: string } | null;
+  /** The live dealt deck as this Partner sees it (getDealView). */
+  deal?: DealView | null;
+  /** Unseen names per deck — the builder's size picker counts only these. */
+  unseen?: Record<string, GenderCounts>;
 }) {
   const [sheet, setSheet] = useState(false);
   useEffect(() => remember(token), [token]);
@@ -150,7 +153,7 @@ export default function ShortlistPage({
       </button>
 
       <div className="fixed inset-x-0 bottom-0 mx-auto flex w-full max-w-[480px] flex-col gap-3 bg-paper px-6 pb-8 pt-4">
-        {deal && (
+        {deal?.href && (
           <Link
             href={deal.href}
             className="min-h-14 rounded-full bg-terra px-8 py-4 text-center text-lg font-medium text-paper"
@@ -160,15 +163,28 @@ export default function ShortlistPage({
               : `Your partner dealt ${deal.size} new names →`}
           </Link>
         )}
-        {/* ?deal= makes the builder attach to THIS Shortlist instead of minting one. */}
-        <Link
-          href={`/?deal=${token}&gender=${deckGenderFor(expecting)}`}
-          className={`min-h-14 rounded-full px-8 py-4 text-center text-lg font-medium ${
-            deal ? "border border-ink-soft/25" : "bg-ink text-paper"
-          }`}
-        >
-          Deal a new deck →
-        </Link>
+        {deal && !deal.href && (
+          <p className="text-center text-sm text-ink-soft">
+            Your partner is dealing {deal.size} new names.
+          </p>
+        )}
+        {!deal || deal.canDeal ? (
+          // ?deal= makes the builder attach to THIS Shortlist instead of minting one.
+          <Link
+            href={`/?deal=${token}&gender=${deckGenderFor(expecting)}${
+              unseen ? `&pool=${encodeURIComponent(JSON.stringify(unseen))}` : ""
+            }`}
+            className={`min-h-14 rounded-full px-8 py-4 text-center text-lg font-medium ${
+              deal ? "border border-ink-soft/25" : "bg-ink text-paper"
+            }`}
+          >
+            Deal a new deck →
+          </Link>
+        ) : (
+          deal.mine && (
+            <p className="text-center text-sm text-ink-soft">Finish your current deck first.</p>
+          )
+        )}
       </div>
 
       {sheet && (
