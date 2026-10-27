@@ -10,7 +10,7 @@ import { Redis } from "@upstash/redis";
     sess:{id}:r2:A|B       → Swipe[] JSON (round 2)  (TTL 30d)
     events:log             → append-only list, NO TTL (the kill metric outlives sessions)
     shortlist:{id}         → Shortlist JSON          NO TTL (partner tokens, expecting, entries)
-    ptok:{token}           → { shortlistId, partner } NO TTL (a Partner's Shortlist link)
+    ptok:{token}           → { shortlistId, partner } NO TTL (a Partner's Shortlist link; deleted on reissue)
 */
 
 export const SESSION_TTL_S = 30 * 24 * 60 * 60;
@@ -22,6 +22,7 @@ export interface Store {
   /** Durable append — no TTL, survives session expiry. */
   append(key: string, value: unknown): Promise<void>;
   range(key: string): Promise<unknown[]>;
+  del(key: string): Promise<void>;
 }
 
 class MemoryStore implements Store {
@@ -48,6 +49,9 @@ class MemoryStore implements Store {
   async range(key: string): Promise<unknown[]> {
     return this.lists.get(key) ?? [];
   }
+  async del(key: string): Promise<void> {
+    this.kv.delete(key);
+  }
 }
 
 class UpstashStore implements Store {
@@ -64,6 +68,9 @@ class UpstashStore implements Store {
   }
   async range(key: string): Promise<unknown[]> {
     return await this.r.lrange(key, 0, -1);
+  }
+  async del(key: string): Promise<void> {
+    await this.r.del(key);
   }
 }
 

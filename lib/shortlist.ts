@@ -1,7 +1,7 @@
 import { nanoid } from "nanoid";
 import { getStore } from "./store";
 import { DECK_GENDERS, type DeckGender } from "./deck-manifest";
-import type { NameCard, Partner, Shortlist } from "./types";
+import type { EventName, NameCard, Partner, Shortlist } from "./types";
 
 /*
   The couple's lasting Shortlist. Every key here is durable (no TTL) — the
@@ -95,4 +95,34 @@ export async function setExpecting(token: string, expecting: DeckGender): Promis
   shortlist.expecting = expecting;
   await store.set(shortlistKey(rec.shortlistId), shortlist);
   return true;
+}
+
+/**
+ * A lost link: mints a fresh token for the OTHER partner and revokes their old
+ * one. The requester's own token is never touched. Null when the token is
+ * unknown or the other partner hasn't joined yet (nothing to reissue).
+ */
+export async function reissuePartnerLink(token: string): Promise<string | null> {
+  const store = getStore();
+  const rec = await store.get<PartnerRecord>(ptokKey(token));
+  if (!rec) return null;
+  const shortlist = await store.get<Shortlist>(shortlistKey(rec.shortlistId));
+  const other: Partner = rec.partner === 1 ? 2 : 1;
+  const old = shortlist?.partners[other];
+  if (!shortlist || !old) return null;
+  const fresh = nanoid(21);
+  await store.set(ptokKey(fresh), { shortlistId: shortlist.id, partner: other } satisfies PartnerRecord);
+  shortlist.partners[other] = fresh;
+  await store.set(shortlistKey(shortlist.id), shortlist);
+  await store.del(ptokKey(old));
+  // Durable, like every event. No session here — the Shortlist outlives them.
+  await store.append("events:log", {
+    session: null,
+    shortlist: shortlist.id,
+    event: "shortlist_link_reissued" satisfies EventName,
+    role: null,
+    partner: rec.partner,
+    ts: Date.now(),
+  });
+  return fresh;
 }

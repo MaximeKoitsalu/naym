@@ -6,10 +6,19 @@ import type { ShortlistFilter } from "@/lib/shortlist-filter";
 
 /*
   The Shortlist sheet behind "filter & links" (#18, variant C): the expecting
-  setting, the girl/boy/both filter, and this partner's own link.
+  setting, the girl/boy/both filter, this partner's own link, and a fresh link for
+  the other partner when theirs is lost.
 */
 
-export function CopyLinkButton({ token, autoFocus }: { token: string; autoFocus?: boolean }) {
+export function CopyLinkButton({
+  token,
+  autoFocus,
+  label = "Copy my Shortlist link",
+}: {
+  token: string;
+  autoFocus?: boolean;
+  label?: string;
+}) {
   const [copied, setCopied] = useState(false);
   async function copy() {
     await navigator.clipboard
@@ -23,7 +32,7 @@ export function CopyLinkButton({ token, autoFocus }: { token: string; autoFocus?
       autoFocus={autoFocus}
       className="min-h-12 w-full rounded-full border border-ink-soft/25 px-6 font-medium"
     >
-      {copied ? "Link copied" : "Copy my Shortlist link"}
+      {copied ? "Link copied" : label}
     </button>
   );
 }
@@ -58,6 +67,57 @@ function Choice<T extends string>({
         ))}
       </div>
     </fieldset>
+  );
+}
+
+/** Revokes the other partner's lost link; the fresh one is shown here only. */
+function FreshPartnerLink({ token }: { token: string }) {
+  const [step, setStep] = useState<"idle" | "confirm" | "busy" | "none">("idle");
+  const [fresh, setFresh] = useState<string | null>(null);
+  async function reissue() {
+    setStep("busy");
+    const res = await fetch("/api/shortlist/reissue", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ token }),
+    }).catch(() => null);
+    const body = res?.ok ? await res.json() : null;
+    if (body?.token) setFresh(body.token);
+    else setStep(res?.status === 404 ? "none" : "confirm");
+  }
+  if (fresh) {
+    return (
+      <div className="space-y-2">
+        <p className="text-sm leading-relaxed text-ink-soft">
+          Their old link no longer opens. Pass this one on — it&apos;s theirs alone.
+        </p>
+        <CopyLinkButton token={fresh} label="Copy my partner's fresh link" />
+      </div>
+    );
+  }
+  if (step === "none") {
+    return <p className="text-sm text-ink-soft">Your partner hasn&apos;t joined yet — there&apos;s no link to replace.</p>;
+  }
+  if (step === "idle") {
+    return (
+      <button onClick={() => setStep("confirm")} className="min-h-11 w-full text-sm text-ink-soft underline">
+        Send my partner a fresh link
+      </button>
+    );
+  }
+  return (
+    <div className="space-y-2">
+      <p className="text-sm leading-relaxed text-ink-soft">
+        Lost their link? A fresh one stops the old one working. Yours stays the same.
+      </p>
+      <button
+        onClick={reissue}
+        disabled={step === "busy"}
+        className="min-h-12 w-full rounded-full border border-ink-soft/25 px-6 font-medium"
+      >
+        Make a fresh link for my partner
+      </button>
+    </div>
   );
 }
 
@@ -109,6 +169,7 @@ export default function ShortlistSheet({
           This link is yours alone. Your partner has their own.
         </p>
         <CopyLinkButton token={token} autoFocus />
+        <FreshPartnerLink token={token} />
         <button onClick={onClose} className="min-h-11 w-full text-sm text-ink-soft underline">
           close
         </button>

@@ -1,14 +1,16 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { NextRequest } from "next/server";
 import { POST as postExpecting } from "@/app/api/shortlist/expecting/route";
-import { createSession, getReveal, getStateView, putSwipes, startB } from "@/lib/session";
-import { getShortlistView } from "@/lib/shortlist";
+import { POST as postReissue } from "@/app/api/shortlist/reissue/route";
+import { createSession, getReveal, getStateView, putSwipes, resolveToken, startB } from "@/lib/session";
+import { getShortlistView, partnerToken } from "@/lib/shortlist";
 import { defaultFilter, visibleEntries } from "@/lib/shortlist-filter";
 import { getStore } from "@/lib/store";
 import type { ShortlistEntry } from "@/lib/types";
 
 /*
-  The Shortlist sheet: the expecting setting and filter (#24).
+  The Shortlist sheet: the expecting setting and filter (#24), and the
+  fresh partner link (#25).
 */
 
 beforeEach(() => {
@@ -86,5 +88,46 @@ describe("the girl/boy/both filter", () => {
     expect(ids("boy")).toEqual(["leif", "kim", "wish"]);
     expect(ids("both")).toEqual(["astrid", "leif", "kim", "wish"]);
     expect(entries).toHaveLength(4);
+  });
+});
+
+describe("a fresh link for my partner (#25)", () => {
+  it("mints the other partner a new token and revokes the old one", async () => {
+    const { p1, p2 } = await bothPartners();
+    const res = await post(postReissue, { token: p1 });
+    expect(res.status).toBe(200);
+    const { token: fresh } = await res.json();
+    expect(fresh).toBeTruthy();
+    expect(fresh).not.toBe(p2);
+    expect(await getShortlistView(p2)).toBeNull(); // the old URL no longer opens
+    expect((await getShortlistView(fresh))!.partner).toBe(2);
+    expect((await getShortlistView(p1))!.partner).toBe(1); // requester untouched
+  });
+
+  it("never touches or reveals the requester's own token", async () => {
+    const { p1, p2 } = await bothPartners();
+    const body = JSON.stringify(await (await post(postReissue, { token: p2 })).json());
+    expect(body).not.toContain(p1);
+    expect(body).not.toContain(p2);
+    expect((await getShortlistView(p1))).toBeNull(); // p2 asked → p1 was reissued
+    expect((await getShortlistView(p2))!.partner).toBe(2);
+  });
+
+  it("refuses when the other partner hasn't joined, and for unknown tokens", async () => {
+    const { creatorToken } = (await createSession())!;
+    const { shortlist } = (await resolveToken(creatorToken))!.meta;
+    const p1 = (await partnerToken(shortlist!.id, 1))!;
+    expect((await post(postReissue, { token: p1 })).status).toBe(404);
+    expect((await post(postReissue, { token: "nope" })).status).toBe(404);
+    expect((await getShortlistView(p1))!.partner).toBe(1);
+  });
+
+  it("logs the reissue", async () => {
+    const { p1 } = await bothPartners();
+    await post(postReissue, { token: p1 });
+    const events = (await getStore().range("events:log")) as { event: string; partner?: number }[];
+    const logged = events.filter((e) => e.event === "shortlist_link_reissued");
+    expect(logged).toHaveLength(1);
+    expect(logged[0].partner).toBe(1);
   });
 });
