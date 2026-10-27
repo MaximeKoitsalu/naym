@@ -8,10 +8,10 @@ import type { NameCard, Partner, Shortlist } from "./types";
   server-computed intersection (landMatches), never a partner's own likes.
 */
 
-type PartnerRecord = { shortlistId: string; partner: Partner };
+export type PartnerRecord = { shortlistId: string; partner: Partner };
 
-const shortlistKey = (id: string) => `shortlist:${id}`;
-const ptokKey = (t: string) => `ptok:${t}`;
+export const shortlistKey = (id: string) => `shortlist:${id}`;
+export const ptokKey = (t: string) => `ptok:${t}`;
 
 /** A new Shortlist with Partner 1 minted; Partner 2 waits for B's start tap. */
 export async function createShortlist(): Promise<{ id: string; token: string }> {

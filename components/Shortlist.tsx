@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import type { DealView, Shortlist, ShortlistEntry } from "@/lib/types";
 import { deckGenderFor, type GenderCounts } from "@/lib/deck-manifest";
+import type { DuelsView } from "@/lib/duels";
+import { DuelsButton, OrderSummary, duelsStep, rankClass } from "./Duels";
 
 /*
   The Shortlist page — variant C, "the list is the page" (#18): the names set
@@ -98,6 +100,7 @@ export default function ShortlistPage({
   entries,
   deal = null,
   unseen,
+  duels,
 }: {
   token: string;
   expecting: Shortlist["expecting"];
@@ -106,6 +109,7 @@ export default function ShortlistPage({
   deal?: DealView | null;
   /** Unseen names per deck — the builder's size picker counts only these. */
   unseen?: Record<string, GenderCounts>;
+  duels: DuelsView;
 }) {
   const [sheet, setSheet] = useState(false);
   useEffect(() => remember(token), [token]);
@@ -132,7 +136,7 @@ export default function ShortlistPage({
               {entries.map((e, i) => (
                 <li
                   key={e.id}
-                  className={`font-display ${i < 3 ? "text-4xl" : "text-2xl text-ink-soft"}`}
+                  className={`font-display ${rankClass(i, !!duels.order)}`}
                 >
                   {e.name}
                 </li>
@@ -145,6 +149,11 @@ export default function ShortlistPage({
           </>
         )}
       </section>
+      {duels.order && (
+        <div className="mx-6 mt-6">
+          <OrderSummary order={duels.order} entries={entries} />
+        </div>
+      )}
       <button
         onClick={() => setSheet(true)}
         className="mx-auto mt-4 min-h-11 text-sm text-ink-soft underline"
@@ -168,6 +177,8 @@ export default function ShortlistPage({
             Your partner is dealing {deal.size} new names.
           </p>
         )}
+        {/* Priority: an incoming deck, then duels, waiting, our order — then Deal. */}
+        {!deal?.href && <DuelsButton token={token} duels={duels} />}
         {!deal || deal.canDeal ? (
           // ?deal= makes the builder attach to THIS Shortlist instead of minting one.
           <Link
@@ -175,7 +186,7 @@ export default function ShortlistPage({
               unseen ? `&pool=${encodeURIComponent(JSON.stringify(unseen))}` : ""
             }`}
             className={`min-h-14 rounded-full px-8 py-4 text-center text-lg font-medium ${
-              deal ? "border border-ink-soft/25" : "bg-ink text-paper"
+              deal || duelsStep(duels) ? "border border-ink-soft/25" : "bg-ink text-paper"
             }`}
           >
             Deal a new deck →

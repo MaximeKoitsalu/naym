@@ -3,6 +3,7 @@ import ShortlistPage from "@/components/Shortlist";
 import { getSeen, getShortlistView, resolvePartner } from "@/lib/shortlist";
 import { unseenCounts } from "@/lib/decks";
 import { getDealView } from "@/lib/session";
+import { getDuelsView, inCombinedOrder } from "@/lib/duels";
 
 export default async function ShortlistRoute({
   params,
@@ -28,13 +29,15 @@ export default async function ShortlistRoute({
       </main>
     );
   }
+  const duels = (await getDuelsView(token))!;
   return (
     <ShortlistPage
       token={token}
       expecting={view.expecting}
-      entries={view.entries}
+      entries={inCombinedOrder(view.entries, duels.order)}
       deal={await getDealView(token)}
       unseen={unseenCounts(await getSeen((await resolvePartner(token))!.shortlistId))}
+      duels={duels}
     />
   );
 }

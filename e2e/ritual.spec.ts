@@ -42,7 +42,7 @@ async function newPartnerPage(browser: Browser) {
 test("full ritual: A swipes → handoff → B swipes blind → both reveals match", async ({
   browser,
 }) => {
-  test.setTimeout(180_000);
+  test.setTimeout(240_000);
   const a = await newPartnerPage(browser);
   const b = await newPartnerPage(browser);
 
@@ -134,6 +134,66 @@ test("full ritual: A swipes → handoff → B swipes blind → both reveals matc
     // Remembered on this device → the landing offers the way back.
     await p.goto("/");
     await expect(p.getByRole("link", { name: "Back to our Shortlist →" })).toHaveAttribute("href", own);
+  }
+
+  // Duels: A ranks Liv > Astrid > Nils, B ranks Liv > Nils > Astrid, blind.
+  const duelAll = async (p: Page, own: string, taste: string[]) => {
+    await p.goto(own);
+    await p.getByRole("link", { name: "3 names to rank · start duels →" }).click();
+    for (let i = 1; i <= 3; i++) {
+      await expect(p.getByText(`${i} of 3`)).toBeVisible();
+      // The previous pair fades out (disabled) before the live pair mounts.
+      const picks = p.getByRole("button", { name: /^pick /, disabled: false });
+      await expect(picks).toHaveCount(2);
+      const pair = await picks.evaluateAll((els) => els.map((e) => e.getAttribute("aria-label")!.slice(5)));
+      const best = taste.find((n) => pair.includes(n))!;
+      await picks.and(p.getByRole("button", { name: `pick ${best}` })).click();
+    }
+  };
+  await duelAll(a.page, aShortlist, ["Liv", "Astrid", "Nils"]);
+  await expect(a.page.getByText("All done. Waiting for your partner's duels…")).toBeVisible();
+  await a.page.goto(aShortlist);
+  await expect(a.page.getByText("Waiting for your partner's duels…")).toBeVisible();
+
+  // B duels with every response tapped: A's picks and ranking never reach B.
+  const duelBodies: Promise<string>[] = [];
+  const duelTap = (res: Response) => {
+    if (/\.(js|css|woff2?|png|svg|ico)(\?|$)/.test(res.url())) return;
+    duelBodies.push(res.text().catch(() => ""));
+  };
+  b.page.on("response", duelTap);
+  await duelAll(b.page, bShortlist, ["Liv", "Nils", "Astrid"]);
+  await expect(b.page.getByText("You both put Liv first.")).toBeVisible();
+  await expect(b.page.getByText("Biggest split:", { exact: false })).toBeVisible();
+  await b.page.waitForLoadState("networkidle");
+  b.page.off("response", duelTap);
+  // A pick is final: flipping one to watch the order shift is refused.
+  const repick = await b.page.request.post("/api/duels", {
+    data: { token: bShortlist.split("/").pop(), a: "astrid", b: "liv", winner: "astrid" },
+  });
+  expect(repick.status()).toBe(400);
+  const duelWire = (await Promise.all(duelBodies)).join("\n") + (await b.page.content());
+  // Pick keys are "id|id", rankings never leave the server under any name.
+  expect(duelWire).not.toMatch(/(astrid|liv|nils)\|(astrid|liv|nils)/);
+  expect(duelWire).not.toMatch(/"(picks|ranks?|ranking)"/);
+  // Every /api/duels answer carries exactly the picker's own view.
+  const pickBodies = (await Promise.all(duelBodies)).filter((b) => b.startsWith('{"remaining"'));
+  expect(pickBodies).toHaveLength(3);
+  for (const body of pickBodies) {
+    expect(Object.keys(JSON.parse(body)).sort()).toEqual(
+      ["newCount", "order", "partnerDone", "remaining", "total"],
+    );
+  }
+
+  // Both Shortlists now lead with Liv, grown and terracotta.
+  for (const [p, own] of [[a.page, aShortlist], [b.page, bShortlist]] as const) {
+    await p.goto(own);
+    const first = p.locator("ol li").first();
+    await expect(first).toHaveText("Liv");
+    await expect(first).toHaveClass(/text-terra/);
+    await expect(p.getByText("You both put Liv first.")).toBeVisible();
+    await expect(p.getByRole("link", { name: "Our order is ready →" })).toBeVisible();
+    await expect(p.getByRole("link", { name: "Deal a new deck →" })).toHaveClass(/border/);
   }
 
   // THE BLINDNESS CONTRACT: no response B received contains A's solo like
