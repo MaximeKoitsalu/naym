@@ -192,6 +192,8 @@ test("full ritual: A swipes → handoff → B swipes blind → both reveals matc
     await expect(first).toHaveText("Liv");
     await expect(first).toHaveClass(/text-terra/);
     await expect(p.getByText("You both put Liv first.")).toBeVisible();
+    await expect(p.getByRole("link", { name: "Our order is ready →" })).toBeVisible();
+    await expect(p.getByRole("link", { name: "Deal a new deck →" })).toHaveClass(/border/);
   }
 
   // THE BLINDNESS CONTRACT: no response B received contains A's solo like
