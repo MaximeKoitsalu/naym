@@ -1,6 +1,7 @@
 import { nanoid } from "nanoid";
 import { buildSessionDeck, DEFAULT_DECK_ID } from "./decks";
 import { getStore, SESSION_TTL_S } from "./store";
+import { createShortlist, landMatches, mintPartner, partnerToken } from "./shortlist";
 import {
   buildRound2Deck,
   guardSwipes,
@@ -50,6 +51,7 @@ export async function createSession(
   const id = nanoid(12);
   const creatorToken = nanoid(21);
   const inviteToken = nanoid(21);
+  const shortlist = await createShortlist(); // mints Partner 1
   const meta: SessionMeta & { inviteToken: string } = {
     id,
     deckId: entry.deckId,
@@ -60,6 +62,7 @@ export async function createSession(
     createdAt: Date.now(),
     bStartedAt: null,
     round2: null,
+    shortlist: { id: shortlist.id, A: 1, B: 2 },
     inviteToken,
   };
   await store.set(metaKey(id), meta, SESSION_TTL_S);
@@ -116,6 +119,8 @@ export async function putSwipes(
   const completed = isComplete(deck, guarded);
   if (completed && !wasComplete) {
     await logEvent(meta.id, "deck_completed", role, { round });
+    // The last finisher lands the matches on the Shortlist (null while the other is mid-deck).
+    await getReveal(token, { logView: false });
   }
   return { swipes: guarded, completed };
 }
@@ -125,6 +130,8 @@ export async function startB(token: string): Promise<boolean> {
   const resolved = await resolveToken(token);
   if (!resolved || resolved.role !== "B") return false;
   const { meta } = resolved;
+  // Idempotent — mints Partner 2 on the first tap, heals a lost mint on a retry.
+  if (meta.shortlist) await mintPartner(meta.shortlist.id, meta.shortlist.B);
   if (meta.bStartedAt === null) {
     meta.bStartedAt = Date.now();
     await getStore().set(metaKey(meta.id), meta, SESSION_TTL_S);
@@ -178,6 +185,7 @@ export async function getReveal(
     // Same rule armRound2 applies — the button never offers a 409.
     round2Available: matches.length === 0 && buildRound2Deck(meta.deck, a, b) !== null,
     round2Armed: meta.round2 !== null,
+    shortlistToken: null,
   };
   if (meta.round2) {
     const [r2a, r2b] = await Promise.all([
@@ -190,6 +198,10 @@ export async function getReveal(
         deckSize: meta.round2.deck.length,
       };
     }
+  }
+  if (meta.shortlist) {
+    await landMatches(meta.shortlist.id, [...matches, ...(payload.round2?.matches ?? [])]);
+    payload.shortlistToken = await partnerToken(meta.shortlist.id, meta.shortlist[role]);
   }
   if (logView) await logEvent(meta.id, "reveal_viewed", role);
   return payload;

@@ -9,6 +9,8 @@ import { Redis } from "@upstash/redis";
     sess:{id}:swipes:A|B   → Swipe[] JSON            (TTL 30d)
     sess:{id}:r2:A|B       → Swipe[] JSON (round 2)  (TTL 30d)
     events:log             → append-only list, NO TTL (the kill metric outlives sessions)
+    shortlist:{id}         → Shortlist JSON          NO TTL (partner tokens, expecting, entries)
+    ptok:{token}           → { shortlistId, partner } NO TTL (a Partner's Shortlist link)
 */
 
 export const SESSION_TTL_S = 30 * 24 * 60 * 60;

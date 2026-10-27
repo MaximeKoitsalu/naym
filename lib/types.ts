@@ -44,6 +44,8 @@ export type SessionMeta = {
   bStartedAt: number | null;
   /** Round 2: armed by either partner after a zero-match reveal. */
   round2: { deck: NameCard[]; armedAt: number } | null;
+  /** The couple's Shortlist and which Partner holds each role; absent on pre-Shortlist sessions. */
+  shortlist?: { id: string; A: Partner; B: Partner };
 };
 
 export type Stage =
@@ -76,4 +78,20 @@ export type RevealPayload = {
   /** True when round 2 can be offered (zero matches, non-empty union, enough decoys). */
   round2Available: boolean;
   round2Armed: boolean;
+  /** The viewer's OWN Shortlist link token — never the other partner's. */
+  shortlistToken: string | null;
+};
+
+/** A lasting identity on a Shortlist — distinct from the per-session roles A/B. */
+export type Partner = 1 | 2;
+
+/** A Match copied onto the Shortlist: full card snapshot, so it outlives its session. */
+export type ShortlistEntry = NameCard & { matchedAt: number };
+
+export type Shortlist = {
+  id: string;
+  /** Partner tokens; Partner 2 is minted on B's start tap, never on GET. */
+  partners: Record<Partner, string | null>;
+  expecting: "girl" | "boy" | "not sure yet";
+  entries: ShortlistEntry[];
 };

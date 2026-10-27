@@ -9,6 +9,7 @@ import {
   startB,
 } from "@/lib/session";
 import { getStore } from "@/lib/store";
+import { getShortlistView } from "@/lib/shortlist";
 import { MAX_DECK_SIZE } from "@/lib/deck-manifest";
 import type { Swipe } from "@/lib/types";
 
@@ -124,6 +125,67 @@ describe("the blindness boundary", () => {
     const { creatorToken } = (await createSession())!;
     await inviteTokenFor(creatorToken);
     expect(await getReveal(creatorToken)).toBeNull();
+  });
+});
+
+describe("the Shortlist", () => {
+  async function matchedSession() {
+    const { creatorToken } = (await createSession(undefined, MAX_DECK_SIZE))!;
+    await putSwipes(creatorToken, await fullDeckSwipes(creatorToken, (id) => ["astrid", "liv", "nils"].includes(id)));
+    const invite = (await getStateView(creatorToken))!.inviteToken!;
+    return { creatorToken, invite };
+  }
+
+  it("Partner 2 is minted on the start tap, never on a GET", async () => {
+    const { creatorToken, invite } = await matchedSession();
+    await getStateView(invite); // a prefetcher's GET
+    const shortlist = (await resolveToken(creatorToken))!.meta.shortlist!;
+    const stored = await getStore().get<{ partners: Record<1 | 2, string | null> }>(`shortlist:${shortlist.id}`);
+    expect(stored!.partners[1]).toBeTruthy();
+    expect(stored!.partners[2]).toBeNull();
+    await startB(invite);
+    await startB(invite);
+    const after = await getStore().get<{ partners: Record<1 | 2, string | null> }>(`shortlist:${shortlist.id}`);
+    expect(after!.partners[2]).toBeTruthy();
+  });
+
+  it("matches land on completion, once, and each partner sees only their own link", async () => {
+    const { creatorToken, invite } = await matchedSession();
+    await startB(invite);
+    await putSwipes(invite, await fullDeckSwipes(invite, (id) => ["liv", "nils", "saga"].includes(id)));
+
+    const a = (await getReveal(creatorToken))!;
+    const b = (await getReveal(invite))!;
+    await getReveal(creatorToken); // re-viewing adds nothing
+    expect(a.shortlistToken).toBeTruthy();
+    expect(b.shortlistToken).toBeTruthy();
+    expect(a.shortlistToken).not.toBe(b.shortlistToken);
+    expect(JSON.stringify(a)).not.toContain(b.shortlistToken!);
+    expect(JSON.stringify(b)).not.toContain(a.shortlistToken!);
+
+    for (const token of [a.shortlistToken!, b.shortlistToken!]) {
+      const view = (await getShortlistView(token))!;
+      expect(view.entries.map((e) => e.id).sort()).toEqual(["liv", "nils"]);
+      expect(view.entries[0].meaning).toBeTruthy(); // full card snapshot
+      expect(view.entries[0].matchedAt).toBeGreaterThan(0);
+      const json = JSON.stringify(view);
+      expect(json).not.toContain("astrid"); // A's solo like
+      expect(json).not.toContain("saga"); // B's solo like
+    }
+  });
+
+  it("Shortlist keys are durable (no TTL)", async () => {
+    const { creatorToken } = await matchedSession();
+    const set = getStore().set.bind(getStore());
+    const ttls: Record<string, number | undefined> = {};
+    getStore().set = async (key, value, ttlS) => {
+      ttls[key] = ttlS;
+      return set(key, value, ttlS);
+    };
+    await startB((await getStateView(creatorToken))!.inviteToken!);
+    const touched = Object.keys(ttls).filter((k) => k.startsWith("shortlist:") || k.startsWith("ptok:"));
+    expect(touched.length).toBeGreaterThan(0);
+    for (const k of touched) expect(ttls[k]).toBeUndefined();
   });
 });
 

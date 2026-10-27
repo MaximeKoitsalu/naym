@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import type { RevealPayload } from "@/lib/types";
+import { KeepShortlist } from "./Shortlist";
 
 /*
   The reveal — count-first suspense arc (design review D9).
@@ -288,6 +289,8 @@ export default function Reveal({
                     {reveal.deckSize} honest answers is its own keepsake.
                   </p>
                 )}
+
+                {reveal.shortlistToken && <KeepShortlist token={reveal.shortlistToken} />}
 
                 <p className="pt-4 font-display text-xl lowercase text-ink-soft">naym</p>
               </motion.div>

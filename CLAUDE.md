@@ -41,6 +41,10 @@ npm run typecheck  # tsc --noEmit
    Editing `data/decks/nordic.json` must never affect live sessions.
 5. **Events are durable** (`events:log`, no TTL) — they ARE the kill metric.
 6. **Dynamic app:** never set `output: "export"` (sessions need a server).
+7. **Shortlist blindness:** the Shortlist only ever receives server-computed
+   matches (`landMatches`, called from `getReveal`), and no per-partner data
+   (swipes, duel picks, the other Partner's token) serializes to the other
+   partner. Shortlist keys (`shortlist:*`, `ptok:*`) are durable, no TTL.
 
 ## Storage
 

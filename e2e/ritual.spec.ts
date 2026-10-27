@@ -102,6 +102,30 @@ test("full ritual: A swipes → handoff → B swipes blind → both reveals matc
   await a.page.getByRole("button", { name: "Tap to reveal" }).click();
   await expect(a.page.getByText("you both chose")).toBeVisible({ timeout: 10_000 });
 
+  // Matches land on BOTH Shortlists; each partner holds only their own link.
+  const shortlistHref = async (p: Page) =>
+    (await p.getByRole("link", { name: "Open our Shortlist" }).getAttribute("href", { timeout: 20_000 }))!;
+  const aShortlist = await shortlistHref(a.page);
+  const bShortlist = await shortlistHref(b.page);
+  expect(aShortlist).not.toBe(bShortlist);
+  for (const [p, own, other] of [
+    [a.page, aShortlist, bShortlist],
+    [b.page, bShortlist, aShortlist],
+  ] as const) {
+    await p.goto(own);
+    for (const name of ["Astrid", "Liv", "Nils"]) {
+      await expect(p.getByText(name, { exact: true })).toBeVisible();
+    }
+    // The page payload carries matches only: no solo like, no other link.
+    const html = await p.content();
+    expect(html).not.toContain("Saga");
+    expect(html).not.toContain("Leif");
+    expect(html).not.toContain(other.split("/").pop()!);
+    // Remembered on this device → the landing offers the way back.
+    await p.goto("/");
+    await expect(p.getByRole("link", { name: "Back to our Shortlist →" })).toHaveAttribute("href", own);
+  }
+
   // THE BLINDNESS CONTRACT: no response B received contains A's solo like
   // ("Saga" was liked only by A and matched by nobody) as swipe data, and
   // no raw swipe array for the other role ever appears.
