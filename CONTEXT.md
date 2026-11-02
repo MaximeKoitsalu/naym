@@ -34,7 +34,7 @@ _Avoid_: vote, battle
 A name is seen once a deck containing it has been swiped through by both partners. Seen names never return in a new deck, whoever liked them.
 
 **Custom name**:
-A name a partner types in themselves. It joins a later deck and reaches the shortlist only if both like it, like any other card. Shown to couples as a "wish". Up to three wait in a queue; every deck either partner deals takes them all, and a wish leaves the queue once a deck holding it is finished by both (a replaced or expired deck hands its wishes to the next one). A wish spelled like a curated name borrows that card, even if Seen, and looks like any other card; only names nobody curated are openly marked as wishes. Wishes take slots of the deck size and count toward the pool and the minimum deck, so they can top up a nearly dry pool.
+A name a partner types in themselves — on the Shortlist, or while building a deck (the first one included). It reaches the shortlist only if both like it, like any other card. Shown to couples as a "wish". Each wish is for a girl, a boy or either; a name spelled like a curated one keeps that card's tag. Up to 25 wait in a queue; a deck takes the ones that fit its gender, at most half its size, and the rest wait. A wish leaves the queue once a deck holding it is finished by both (a replaced or expired deck hands its wishes to the next one). A wish spelled like a curated name borrows that card, even if Seen, and looks like any other card; only names nobody curated are openly marked as wishes. Wishes take slots of the deck size and count toward the pool and the minimum deck.
 
 **Gender tag**:
 Each card is tagged girl, boy or unisex as the name is used in that card's culture (the same spelling can differ between decks). A deck is built for "girl", "boy" or "not sure yet"; unisex names belong to all three; wishes carry no tag.
@@ -42,7 +42,7 @@ Each card is tagged girl, boy or unisex as the name is used in that card's cultu
 ## Relationships
 
 - A **Couple** has one **Shortlist** and many sessions; each session's **Matches** land on it.
-- A **Custom name** becomes a card in a later **Deck** — never directly a **Shortlist** entry.
+- A **Custom name** becomes a card in a **Deck** — never directly a **Shortlist** entry.
 
 ## Flagged ambiguities
 
