@@ -4,6 +4,7 @@ import { MIN_DECK_SIZE, type DeckGender } from "./deck-manifest";
 import { logEvent } from "./events";
 import { getStore, SESSION_TTL_S } from "./store";
 import {
+  addWish,
   createShortlist,
   getDeal,
   getSeen,
@@ -46,16 +47,16 @@ export async function createSession(
   deckIds: string | string[] = DEFAULT_DECK_ID,
   size?: number,
   gender: DeckGender = "unsure",
+  wishNames: string[] = [],
 ): Promise<{ creatorToken: string; sessionId: string } | null> {
-  // One origin → that deck verbatim (at max size); several → an even blend.
-  const entry = buildSessionDeck(
-    Array.isArray(deckIds) ? deckIds : [deckIds],
-    size,
-    gender,
-  );
+  const ids = Array.isArray(deckIds) ? deckIds : [deckIds];
+  // One origin → that deck verbatim (at max size); several → an even blend. Wishes take slots, like a deal.
+  const entry = buildSessionDeck(ids, size, gender, Math.random, undefined, wishNames.map((w) => wishCard(w, ids)));
   if (!entry) return null; // unknown deck or empty pick — route turns this into a 400
   const shortlist = await createShortlist(gender); // mints Partner 1
-  return openSession(entry, { id: shortlist.id, A: 1, B: 2 });
+  // Queued like any slip, so they leave the queue only when this deck completes.
+  for (const w of wishNames) await addWish(shortlist.token, w);
+  return openSession(entry, { id: shortlist.id, A: 1, B: 2 }, wishNames);
 }
 
 async function openSession(

@@ -2,10 +2,10 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import type { DeckGender, GenderCounts } from "@/lib/deck-manifest";
+import { dealHref, type DeckGender, type GenderCounts } from "@/lib/deck-manifest";
 import type { DuelsView } from "@/lib/duels";
 import { defaultFilter, visibleEntries } from "@/lib/shortlist-filter";
-import { lastShortlist, otherHolder, remember } from "@/lib/shortlist-device";
+import { otherHolder, remember } from "@/lib/shortlist-device";
 import type { DealView, Partner, ShortlistEntry } from "@/lib/types";
 import { DuelsButton, OrderSummary, duelsStep, rankClass } from "./Duels";
 import ShortlistSheet, { CopyLinkButton } from "./ShortlistSheet";
@@ -37,22 +37,6 @@ export function KeepShortlist({ token, partner }: { token: string; partner?: Par
 }
 
 /** On the landing page, when this device remembers a Shortlist link. */
-export function BackToShortlist() {
-  const [href, setHref] = useState<string | null>(null);
-  useEffect(() => {
-    setHref(lastShortlist());
-  }, []);
-  if (!href) return null;
-  return (
-    <Link
-      href={href}
-      className="self-start rounded-full bg-paper-dim px-4 py-2 text-sm font-medium text-terra-deep"
-    >
-      Back to our Shortlist →
-    </Link>
-  );
-}
-
 const forWhom: Record<DeckGender, string> = {
   girl: "daughter",
   boy: "son",
@@ -138,7 +122,7 @@ export default function ShortlistPage({
   }
 
   return (
-    <main className="flex flex-1 flex-col pb-40">
+    <main className="flex flex-1 flex-col pb-56">
       <HolderStrip partner={partner} />
       <section className="mx-6 mt-6 flex flex-col items-center rounded-[20px] bg-paper-dim px-6 py-10 text-center">
         <h1 className="text-xs uppercase tracking-widest text-ink-soft">
@@ -191,7 +175,7 @@ export default function ShortlistPage({
         filter & links
       </button>
 
-      <div className="fixed inset-x-0 bottom-0 mx-auto flex w-full max-w-[480px] flex-col gap-3 bg-paper px-6 pb-8 pt-4">
+      <div className="fixed inset-x-0 bottom-[var(--nav-h)] mx-auto flex w-full max-w-[480px] flex-col gap-3 bg-paper px-6 pb-4 pt-4">
         {deal?.href && (
           <Link
             href={deal.href}
@@ -212,9 +196,7 @@ export default function ShortlistPage({
         {!deal || deal.canDeal ? (
           // ?deal= makes the builder attach to THIS Shortlist instead of minting one.
           <Link
-            href={`/?deal=${token}&gender=${expecting}${
-              unseen ? `&pool=${encodeURIComponent(JSON.stringify(unseen))}` : ""
-            }${samples ? `&samples=${encodeURIComponent(JSON.stringify(samples))}` : ""}${wishes.length ? `&wishes=${wishes.length}` : ""}`}
+            href={dealHref({ token, expecting, unseen, samples, wishes: wishes.length })}
             className={`min-h-14 rounded-full px-8 py-4 text-center text-lg font-medium ${
               deal || duelsStep(duels) ? "border border-ink-soft/25" : "bg-ink text-paper"
             }`}

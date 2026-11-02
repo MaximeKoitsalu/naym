@@ -131,9 +131,11 @@ test("full ritual: A swipes → handoff → B swipes blind → both reveals matc
     expect(wire).not.toContain("Saga");
     expect(wire).not.toContain("Leif");
     expect(wire).not.toContain(other.split("/").pop()!);
-    // Remembered on this device → the landing offers the way back.
+    // Remembered on this device → the bottom nav leads back, even from the landing.
     await p.goto("/");
-    await expect(p.getByRole("link", { name: "Back to our Shortlist →" })).toHaveAttribute("href", own);
+    const nav = p.getByRole("navigation", { name: "Our lists" });
+    await expect(nav.getByRole("link", { name: "Our names" })).toHaveAttribute("href", own);
+    await expect(nav.getByRole("link", { name: "This or that" })).toHaveAttribute("href", `${own}/duels`);
   }
 
   // Duels: A ranks Liv > Astrid > Nils, B ranks Liv > Nils > Astrid, blind.

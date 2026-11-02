@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Fraunces, Schibsted_Grotesk } from "next/font/google";
 import "./globals.css";
+import BottomNav from "@/components/BottomNav";
 
 const fraunces = Fraunces({
   subsets: ["latin"],
@@ -30,6 +31,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en" className={`${fraunces.variable} ${schibsted.variable}`}>
       <body>
         <div className="stage">{children}</div>
+        <BottomNav />
       </body>
     </html>
   );

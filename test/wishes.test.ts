@@ -221,3 +221,42 @@ describe("wishes entering a dealt deck", () => {
     expect(await getWishes(id)).toEqual(["Ilse"]);
   });
 });
+
+describe("wishes typed in the deck builder", () => {
+  const post = (body: unknown) =>
+    import("@/app/api/session/route").then(({ POST }) =>
+      POST(new NextRequest("http://localhost/api/session", { method: "POST", body: JSON.stringify(body) })),
+    );
+
+  it("join the very first deck, queued until it completes", async () => {
+    const res = await post({ deckIds: ["nordic-v1"], size: 10, gender: "girl", wishes: ["mirja", "SAGA"] });
+    expect(res.status).toBe(200);
+    const { creatorToken } = await res.json();
+    const state = (await getStateView(creatorToken))!;
+    expect(state.deck).toHaveLength(10);
+    const names = state.deck.map((c) => c.name);
+    expect(names).toContain("Mirja");
+    expect(names).toContain("Saga"); // borrows the curated card
+    expect(state.deck.find((c) => c.name === "Mirja")?.wish).toBe(true);
+
+    const invite = await bothFinish(creatorToken, () => true, () => true);
+    const token = (await getReveal(invite))!.shortlistToken!;
+    const { shortlistId } = (await resolvePartner(token))!;
+    expect(await getWishes(shortlistId)).toEqual([]); // the deck completed, so the queue emptied
+  });
+
+  it("refuses a bad name or more than three", async () => {
+    expect((await post({ deckIds: ["nordic-v1"], wishes: ["<img>"] })).status).toBe(400);
+    expect((await post({ deckIds: ["nordic-v1"], wishes: ["Ann", "Bo", "Cy", "Di"] })).status).toBe(400);
+  });
+
+  it("go into a dealt deck through the Shortlist's queue", async () => {
+    const { creatorToken } = (await createSession("nordic-v1", 10, "girl"))!;
+    const invite = await bothFinish(creatorToken, () => true, () => true);
+    const token = (await getReveal(invite))!.shortlistToken!;
+    const res = await post({ shortlistToken: token, deckIds: ["greek-v1"], size: 10, gender: "girl", wishes: ["Mirja"] });
+    expect(res.status).toBe(200);
+    const dealt = (await res.json()).creatorToken;
+    expect((await getStateView(dealt))!.deck.map((c) => c.name)).toContain("Mirja");
+  });
+});

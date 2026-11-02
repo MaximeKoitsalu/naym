@@ -12,8 +12,7 @@ import {
   type DeckGender,
   type GenderCounts,
 } from "@/lib/deck-manifest";
-import { BackToShortlist } from "@/components/Shortlist";
-import { MAX_WISHES } from "@/lib/wishes";
+import { cleanWish, MAX_WISHES, MAX_WISH_LENGTH, sameName } from "@/lib/wishes";
 
 const GENDER_OPTIONS: { value: DeckGender; label: string }[] = [
   { value: "girl", label: "a girl" },
@@ -27,6 +26,9 @@ export default function Landing() {
   const [picked, setPicked] = useState<DeckChoice[]>(["nordic-v1"]);
   const [size, setSize] = useState<number>(DEFAULT_DECK_SIZE);
   const [gender, setGender] = useState<DeckGender>("unsure");
+  // Names typed here go into THIS deck as wishes (first deck included), on top of any already queued.
+  const [own, setOwn] = useState<string[]>([]);
+  const [ownText, setOwnText] = useState("");
   // Dealing from a Shortlist (?deal=<own Shortlist token>): attach to it, Seen names excluded.
   const [deal, setDeal] = useState<string | null>(null);
   // The couple's unseen names per deck, carried on the deal link — sizes they can't fill are disabled.
@@ -52,10 +54,19 @@ export default function Landing() {
   useEffect(() => setNotice(null), [picked, size, gender]);
   // shortcut: a wish borrowing an unseen curated card is counted twice, so the pool can
   // run up to MAX_WISHES high; the server then deals a slightly smaller deck. Fine at that cap.
-  const pool = picked.length ? poolSize(picked, gender, unseen) + wishes : 0;
+  const pool = picked.length ? poolSize(picked, gender, unseen) + wishes + own.length : 0;
   // Never deal a deck the pool can't fill: fall back to the largest size that fits.
   const fits = DECK_SIZE_PRESETS.filter((n) => n <= pool);
   const dealt = size <= pool ? size : (fits.at(-1) ?? size);
+
+  const roomForWishes = MAX_WISHES - wishes - own.length;
+  function addOwn(e: React.FormEvent) {
+    e.preventDefault();
+    const name = cleanWish(ownText);
+    if (!name || roomForWishes <= 0) return;
+    if (!own.some((w) => sameName(w, name))) setOwn([...own, name]);
+    setOwnText("");
+  }
 
   function toggle(id: DeckChoice) {
     setPicked((prev) =>
@@ -70,7 +81,7 @@ export default function Landing() {
       const res = await fetch("/api/session", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ deckIds: picked, size: dealt, gender, shortlistToken: deal ?? undefined }),
+        body: JSON.stringify({ deckIds: picked, size: dealt, gender, wishes: own, shortlistToken: deal ?? undefined }),
       });
       const json = await res.json();
       if (res.status === 409) {
@@ -89,8 +100,7 @@ export default function Landing() {
   }
 
   return (
-    <main className="flex flex-1 flex-col justify-center gap-7 px-8 py-14">
-      <BackToShortlist />
+    <main className="flex flex-1 flex-col justify-center gap-7 px-8 pt-14 pb-[calc(var(--nav-h)+3.5rem)]">
       <h1 className="font-display text-5xl font-semibold lowercase tracking-tight">
         naym
       </h1>
@@ -201,6 +211,52 @@ export default function Landing() {
             : ""}
         </p>
       </fieldset>
+
+      {/* A form of its own, so Enter adds a name instead of starting the deck. */}
+      <form onSubmit={addOwn} className="flex flex-col gap-2.5">
+        <label htmlFor="own-name" className="pb-1 text-sm text-ink-soft">
+          your own names — optional, they join this deck as wishes
+        </label>
+        {own.length > 0 && (
+          <ul className="flex flex-wrap gap-2">
+            {own.map((w) => (
+              <li key={w}>
+                <button
+                  type="button"
+                  onClick={() => setOwn(own.filter((x) => x !== w))}
+                  aria-label={`remove ${w}`}
+                  className="min-h-10 rounded-full border border-terra bg-paper-dim px-3 font-display text-lg italic text-terra-deep"
+                >
+                  {w} <span aria-hidden>×</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        <div className="flex gap-2">
+          <input
+            id="own-name"
+            value={ownText}
+            onChange={(e) => setOwnText(e.target.value)}
+            placeholder={roomForWishes > 0 ? "a name" : `that's ${MAX_WISHES}`}
+            maxLength={MAX_WISH_LENGTH}
+            disabled={roomForWishes <= 0}
+            className="min-h-12 min-w-0 flex-1 rounded-2xl border border-ink-soft/25 bg-paper px-4 font-display text-lg italic outline-none focus:border-terra disabled:opacity-40"
+          />
+          <button
+            type="submit"
+            disabled={!cleanWish(ownText) || roomForWishes <= 0}
+            className="min-h-12 rounded-2xl border border-ink-soft/25 px-5 disabled:opacity-40"
+          >
+            Add
+          </button>
+        </div>
+        {wishes > 0 && (
+          <p className="text-sm text-ink-soft">
+            {wishes} slipped from your Shortlist {wishes === 1 ? "is" : "are"} already coming along.
+          </p>
+        )}
+      </form>
 
       {notice && (
         <p className="text-sm text-terra-deep" role="status">
