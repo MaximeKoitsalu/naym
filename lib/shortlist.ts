@@ -2,7 +2,8 @@ import { nanoid } from "nanoid";
 import { getStore } from "./store";
 import { DECK_GENDERS, type DeckGender } from "./deck-manifest";
 import { logEvent } from "./events";
-import { MAX_WISHES, sameName } from "./wishes";
+import { MAX_WISHES, sameName, type Wish } from "./wishes";
+import { resolveWish } from "./decks";
 import { otherPartner, type NameCard, type Partner, type Shortlist } from "./types";
 
 /*
@@ -180,28 +181,30 @@ const wishesKey = (id: string) => `shortlist:${id}:wishes`;
  * dealt into is finished by both (removeWishes), so a replaced or expired
  * deck hands its wishes on to the next deal.
  */
-export async function getWishes(id: string): Promise<string[]> {
-  return (await getStore().get<string[]>(wishesKey(id))) ?? [];
+export async function getWishes(id: string): Promise<Wish[]> {
+  const stored = (await getStore().get<(Wish | string)[]>(wishesKey(id))) ?? [];
+  // Wishes queued before gender tags were bare names: a known name takes its curated tag, the rest fit every deck.
+  return stored.map((w) => (typeof w === "string" ? resolveWish({ name: w, gender: "unisex" }) : w));
 }
 
 /**
- * Either partner slips a (cleaned) name in. A name already queued, in any case,
- * is a no-op. `{ full }` once MAX_WISHES are queued; null for an unknown token.
- * Logs wish_slipped without the partner.
+ * Either partner slips a (cleaned) name in; a name we already know takes its
+ * curated tag. A name already queued, in any case, is a no-op. `{ full }` once
+ * MAX_WISHES are queued; null for an unknown token. Logs wish_slipped without the partner.
  */
 export async function addWish(
   token: string,
-  name: string,
-): Promise<{ wishes: string[] } | { full: true } | null> {
+  wish: Wish,
+): Promise<{ wishes: Wish[] } | { full: true } | null> {
   const rec = await resolvePartner(token);
   if (!rec) return null;
   const wishes = await getWishes(rec.shortlistId);
-  if (wishes.some((w) => sameName(w, name))) return { wishes };
+  if (wishes.some((w) => sameName(w.name, wish.name))) return { wishes };
   if (wishes.length >= MAX_WISHES) return { full: true };
   // shortcut: read-modify-write, so a slip and a deck completing (removeWishes) at the
   // same instant can drop one; RPUSH/LREM if it matters.
   // A new array: the memory store hands out stored values by reference, and a dealt deck holds this one.
-  const next = [...wishes, name];
+  const next = [...wishes, resolveWish(wish)];
   await getStore().set(wishesKey(rec.shortlistId), next);
   await logEvent(null, "wish_slipped", undefined, { shortlist: rec.shortlistId });
   return { wishes: next };
@@ -210,6 +213,6 @@ export async function addWish(
 /** A finished deck's wishes leave the queue; anything slipped since stays. Idempotent. */
 export async function removeWishes(id: string, names: string[]): Promise<void> {
   const wishes = await getWishes(id);
-  const left = wishes.filter((w) => !names.some((n) => sameName(n, w)));
+  const left = wishes.filter((w) => !names.some((n) => sameName(n, w.name)));
   if (left.length < wishes.length) await getStore().set(wishesKey(id), left);
 }

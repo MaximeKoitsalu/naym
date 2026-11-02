@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createSession, dealSession } from "@/lib/session";
-import { addWish } from "@/lib/shortlist";
 import { DECK_GENDERS } from "@/lib/deck-manifest";
-import { cleanWish, MAX_WISHES, sameName } from "@/lib/wishes";
+import { MAX_WISHES, parseWish, sameName, type Wish } from "@/lib/wishes";
 
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
@@ -16,25 +15,21 @@ export async function POST(req: NextRequest) {
   // Omitted → "unsure" (pre-picker clients); anything else must be a known gender.
   const gender = DECK_GENDERS.find((g) => g === (body?.gender ?? "unsure"));
   if (!gender) return NextResponse.json({ error: "unknown gender" }, { status: 400 });
-  // Wishes typed in the builder: every one must pass cleanWish, at most MAX_WISHES, no repeats.
-  const raw: unknown[] = Array.isArray(body?.wishes) ? body.wishes : [];
-  const wishes = raw.map(cleanWish);
-  if (wishes.some((w) => !w) || wishes.length > MAX_WISHES)
+  // Wishes typed in the builder ({ name, gender }): every one must pass parseWish, at most MAX_WISHES, no repeats.
+  if (body?.wishes !== undefined && !Array.isArray(body.wishes))
     return NextResponse.json({ error: "bad wishes" }, { status: 400 });
-  const unique = (wishes as string[]).filter((w, i, all) => all.findIndex((x) => sameName(x, w)) === i);
+  const wishes = ((body?.wishes ?? []) as unknown[]).map(parseWish);
+  if (wishes.length > MAX_WISHES || !wishes.every((w): w is Wish => w !== null))
+    return NextResponse.json({ error: "bad wishes" }, { status: 400 });
+  const unique = wishes.filter((w, i) => wishes.findIndex((x) => sameName(x.name, w.name)) === i);
   // Dealt from a Shortlist: same couple, Seen names excluded.
   if (typeof body?.shortlistToken === "string") {
-    // Into the Shortlist's queue first; the deal takes every queued wish.
-    for (const w of unique) {
-      const added = await addWish(body.shortlistToken, w);
-      if (!added) return NextResponse.json({ error: "unknown deck or shortlist" }, { status: 400 });
-      if ("full" in added) return NextResponse.json({ error: "queue full" }, { status: 409 });
-    }
     // deckIds may be one id, a list, or absent — dealSession wants a list.
-    const dealt = await dealSession(body.shortlistToken, [deckIds ?? []].flat(), size, gender);
+    const dealt = await dealSession(body.shortlistToken, [deckIds ?? []].flat(), size, gender, unique);
     if (!dealt) return NextResponse.json({ error: "unknown deck or shortlist" }, { status: 400 });
     if ("dry" in dealt) return NextResponse.json({ error: "pool dry", left: dealt.dry }, { status: 409 });
     if ("busy" in dealt) return NextResponse.json({ error: "deck in progress" }, { status: 409 });
+    if ("full" in dealt) return NextResponse.json({ error: "queue full", full: true }, { status: 409 });
     return NextResponse.json(dealt);
   }
   const session = await createSession(deckIds, size, gender, unique);

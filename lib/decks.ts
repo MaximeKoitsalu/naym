@@ -5,7 +5,7 @@ import german from "@/data/decks/german.json";
 import italian from "@/data/decks/italian.json";
 import french from "@/data/decks/french.json";
 import type { NameCard } from "./types";
-import { sameName } from "./wishes";
+import { sameName, type Wish, type WishGender } from "./wishes";
 import { shuffle } from "./reveal";
 import {
   DECK_GENDERS,
@@ -103,17 +103,27 @@ export function unseenSamples(seen: ReadonlySet<string>): Record<string, Record<
  * borrowed whole, preferring the chosen decks; an unknown name becomes an
  * untagged wish card.
  */
-export function wishCard(name: string, preferDeckIds: string[] = []): NameCard {
+export function wishCard(
+  name: string,
+  preferDeckIds: string[] = [],
+  gender: WishGender = "unisex",
+): NameCard {
   const decks = [...preferDeckIds.map((id) => getDeckEntry(id)), ...REGISTRY.values()];
   for (const d of decks) {
     const card = d?.names.find((c) => sameName(c.name, name));
     if (card) return card;
   }
-  return { id: `wish-${name.toLocaleLowerCase()}`, name, say: "", origin: "", meaning: "", wish: true };
+  return { id: `wish-${name.toLocaleLowerCase()}`, name, say: "", origin: "", meaning: "", gender, wish: true };
+}
+
+/** A name we already know keeps its curated tag; only unknown names keep the partner's pick. */
+export function resolveWish(w: Wish): Wish {
+  const card = wishCard(w.name);
+  return card.wish ? w : { name: w.name, gender: card.gender ?? "unisex" };
 }
 
 /** Clamp a requested deck size into [MIN_DECK_SIZE, MAX_DECK_SIZE], defaulting garbage input. */
-function clampSize(size: number): number {
+export function clampSize(size: number): number {
   if (!Number.isFinite(size)) return DEFAULT_DECK_SIZE;
   return Math.min(MAX_DECK_SIZE, Math.max(MIN_DECK_SIZE, Math.round(size)));
 }

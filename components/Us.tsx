@@ -1,35 +1,51 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type { DeckGender } from "@/lib/deck-manifest";
-import { MAX_WISHES, MAX_WISH_LENGTH, sameName } from "@/lib/wishes";
+import { defaultWishGender, MAX_WISHES, MAX_WISH_LENGTH, sameName, type Wish, type WishGender } from "@/lib/wishes";
 import { replaceHolder } from "@/lib/shortlist-device";
 import type { ShortlistFilter } from "@/lib/shortlist-filter";
 import { otherPartner, type Partner } from "@/lib/types";
 
 /*
-  The Shortlist sheet behind "filter & links" (#18, variant C): the expecting
-  setting, the girl/boy/both filter, this partner's own link, and a fresh link for
-  the other partner when theirs is lost, and the wish slip (#23).
+  The "Us" tab: who we're naming, the wish slip (#23), this partner's own link,
+  and a fresh link for the other partner when theirs is lost. The girl/boy/both
+  filter (Choice + FILTER_OPTIONS) lives on the Shortlist itself.
 */
+
+const WISH_GENDER_OPTIONS: { value: WishGender; label: string }[] = [
+  { value: "girl", label: "girl" },
+  { value: "boy", label: "boy" },
+  { value: "unisex", label: "either" }, // "unisex" is the code name for "either"
+];
+
+const wishLabel = (w: Wish) => `${w.name} (${WISH_GENDER_OPTIONS.find((o) => o.value === w.gender)!.label})`;
+
+/** Who a typed name is for: decks only take the wishes that fit their gender. */
+export function WishGenderPick({ value, onChange }: { value: WishGender; onChange: (g: WishGender) => void }) {
+  return <Choice legend="this name is for" options={WISH_GENDER_OPTIONS} value={value} onChange={onChange} />;
+}
 
 /** Variant C's paper slip. The server validates; the input only hints. */
 function WishSlip({
   token,
+  expecting,
   wishes,
   inDeck,
   onWishes,
 }: {
   token: string;
-  wishes: string[];
-  /** Queued wishes already dealt into the live deck. */
+  expecting: DeckGender;
+  wishes: Wish[];
+  /** Names of queued wishes already dealt into the live deck. */
   inDeck: string[];
-  onWishes: (w: string[]) => void;
+  onWishes: (w: Wish[]) => void;
 }) {
   const [text, setText] = useState("");
+  const [gender, setGender] = useState<WishGender>(() => defaultWishGender(expecting));
   const [error, setError] = useState<string | null>(null);
   const full = wishes.length >= MAX_WISHES;
-  const dealt = wishes.filter((w) => inDeck.some((d) => sameName(d, w)));
+  const dealt = wishes.filter((w) => inDeck.some((d) => sameName(d, w.name)));
   const waiting = wishes.filter((w) => !dealt.includes(w));
   async function submitWish(e: React.FormEvent) {
     e.preventDefault();
@@ -37,7 +53,7 @@ function WishSlip({
     const res = await fetch("/api/shortlist/wishes", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ token, name: text }),
+      body: JSON.stringify({ token, name: text, gender }),
     }).catch(() => null);
     const body = res?.ok ? await res.json() : null;
     if (body?.wishes) {
@@ -48,7 +64,7 @@ function WishSlip({
         res?.status === 400
           ? "Letters, spaces, hyphens and apostrophes only."
           : res?.status === 409
-            ? `All ${MAX_WISHES} wishes are taken until the current deck is done.`
+            ? `${MAX_WISHES} names are already waiting — swipe a deck first.`
             : "That didn't save — try again.",
       );
     }
@@ -58,7 +74,11 @@ function WishSlip({
       <p className="font-display text-xl">Slip a name into the next deck</p>
       <p className="mt-1 text-sm text-ink-soft">
         It&apos;ll show up as a wish. You both swipe it — it only joins the Shortlist if you both love it.
+        Each deck takes up to half its size of your names; the rest wait for the next.
       </p>
+      <div className="mt-4">
+        <WishGenderPick value={gender} onChange={setGender} />
+      </div>
       <div className="mt-4 flex gap-2">
         <input
           value={text}
@@ -84,13 +104,12 @@ function WishSlip({
       )}
       {waiting.length > 0 && (
         <p className="mt-3 text-sm text-ink-soft">
-          Waiting for the next deck: {waiting.join(", ")} ({wishes.length}/{MAX_WISHES})
+          Waiting for the next deck: {waiting.map(wishLabel).join(", ")}
         </p>
       )}
       {dealt.length > 0 && (
         <p className="mt-3 text-sm text-ink-soft">
-          In the deck you&apos;re swiping now: {dealt.join(", ")}
-          {waiting.length === 0 && ` (${wishes.length}/${MAX_WISHES})`}
+          In the deck you&apos;re swiping now: {dealt.map(wishLabel).join(", ")}
         </p>
       )}
     </form>
@@ -124,7 +143,7 @@ export function CopyLinkButton({
   );
 }
 
-function Choice<T extends string>({
+export function Choice<T extends string>({
   legend,
   options,
   value,
@@ -216,62 +235,55 @@ const EXPECTING_OPTIONS: { value: DeckGender; label: string }[] = [
   { value: "unsure", label: "not sure yet" },
 ];
 
-const FILTER_OPTIONS: { value: ShortlistFilter; label: string }[] = [
+export const FILTER_OPTIONS: { value: ShortlistFilter; label: string }[] = [
   { value: "girl", label: "girl" },
   { value: "boy", label: "boy" },
   { value: "both", label: "both" },
 ];
 
-export default function ShortlistSheet({
+export default function UsPanel({
   token,
   partner,
-  expecting,
-  onExpecting,
-  filter,
-  onFilter,
-  wishes,
+  expecting: initialExpecting,
+  wishes: initialWishes,
   wishesInDeck,
-  onWishes,
-  onClose,
 }: {
   token: string;
   partner: Partner;
   expecting: DeckGender;
-  onExpecting: (g: DeckGender) => void;
-  filter: ShortlistFilter;
-  onFilter: (f: ShortlistFilter) => void;
-  wishes: string[];
+  wishes: Wish[];
   wishesInDeck: string[];
-  onWishes: (w: string[]) => void;
-  onClose: () => void;
 }) {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  const [expecting, setExpecting] = useState(initialExpecting);
+  const [wishes, setWishes] = useState(initialWishes);
+
+  function changeExpecting(g: DeckGender) {
+    // Optimistic; a failed save reverts.
+    const before = expecting;
+    setExpecting(g);
+    fetch("/api/shortlist/expecting", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ token, expecting: g }),
+    })
+      .then((r) => {
+        if (!r.ok) throw new Error();
+      })
+      .catch(() => setExpecting(before));
+  }
 
   return (
-    <div className="fixed inset-0 z-10 flex items-end bg-ink/30" onClick={onClose}>
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label="Shortlist filter and links"
-        className="mx-auto max-h-[90dvh] w-full max-w-[480px] space-y-5 overflow-y-auto rounded-t-[20px] bg-paper p-6 pb-24"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <Choice legend="who are we naming?" options={EXPECTING_OPTIONS} value={expecting} onChange={onExpecting} />
-        <WishSlip token={token} wishes={wishes} inDeck={wishesInDeck} onWishes={onWishes} />
-        <Choice legend="show" options={FILTER_OPTIONS} value={filter} onChange={onFilter} />
+    <main className="flex flex-1 flex-col gap-6 px-6 pt-10 pb-[calc(var(--nav-h)+2.5rem)]">
+      <h1 className="font-display text-4xl">Us</h1>
+      <Choice legend="who are we naming?" options={EXPECTING_OPTIONS} value={expecting} onChange={changeExpecting} />
+      <WishSlip token={token} expecting={expecting} wishes={wishes} inDeck={wishesInDeck} onWishes={setWishes} />
+      <section className="space-y-3">
         <p className="text-sm leading-relaxed text-ink-soft">
           This link is yours alone. Your partner has their own.
         </p>
-        <CopyLinkButton token={token} autoFocus />
+        <CopyLinkButton token={token} />
         <FreshPartnerLink token={token} partner={partner} />
-        <button onClick={onClose} className="min-h-11 w-full text-sm text-ink-soft underline">
-          close
-        </button>
-      </div>
-    </div>
+      </section>
+    </main>
   );
 }

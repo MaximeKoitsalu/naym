@@ -5,8 +5,9 @@ import { getDealView } from "@/lib/session";
 import { dealHref } from "@/lib/deck-manifest";
 
 /**
- * The bottom nav's "New deck": a passive GET (writes nothing) that forwards to
- * the builder's deal link, or back to the Shortlist while a deck can't be dealt.
+ * The bottom nav's "Swipe": a passive GET (writes nothing) that forwards to
+ * whatever is next — the live deck this partner can swipe, the Shortlist while
+ * the partner is still dealing, or the builder's deal link for a new deck.
  */
 export async function GET(req: NextRequest, { params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
@@ -15,6 +16,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ toke
     resolvePartner(token),
     getDealView(token),
   ]);
+  if (deal?.href) return NextResponse.redirect(new URL(deal.href, req.url));
   if (!view || !partner || (deal && !deal.canDeal)) {
     return NextResponse.redirect(new URL(`/shortlist/${token}`, req.url));
   }
@@ -24,7 +26,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ toke
     expecting: view.expecting,
     unseen: unseenCounts(seen),
     samples: unseenSamples(seen),
-    wishes: wishes.length,
+    wishes: {
+      girl: wishes.filter((w) => w.gender === "girl").length,
+      boy: wishes.filter((w) => w.gender === "boy").length,
+      unisex: wishes.filter((w) => w.gender === "unisex").length,
+    },
   });
   return NextResponse.redirect(new URL(href, req.url));
 }

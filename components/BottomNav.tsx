@@ -1,26 +1,31 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { lastShortlist } from "@/lib/shortlist-device";
 
 /*
-  The way back to a couple's lists, once this device remembers a Shortlist.
+  Swipe (what's next) · Our names (the Shortlist) · Us (settings and links),
+  once this device remembers a Shortlist.
   Hidden on /s/* — swiping, handoff and the reveal keep the whole screen,
   and the swipe deck's decision row stays the only thing on the action axis.
 */
 export default function BottomNav() {
   const path = usePathname();
+  const search = useSearchParams();
   const [home, setHome] = useState<string | null>(null);
   // Re-read on every route change: opening a Shortlist is what remembers it.
   useEffect(() => setHome(lastShortlist()), [path]);
   if (!home || path.startsWith("/s/")) return null;
 
+  // "/" is only "Swipe" when it's dealing onto this Shortlist; a bare "/" starts a new couple.
+  const dealing = path === "/" && search.has("deal");
   const tabs = [
-    { href: home, label: "Our names", active: path === home },
-    { href: `${home}/duels`, label: "This or that", active: path === `${home}/duels` },
-    { href: `${home}/deal`, label: "New deck", active: path === "/" },
+    // A redirect route, not a page — nothing worth prefetching.
+    { href: `${home}/swipe`, label: "Swipe", active: dealing, prefetch: false },
+    { href: home, label: "Our names", active: path === home || path === `${home}/duels` },
+    { href: `${home}/us`, label: "Us", active: path === `${home}/us` },
   ];
   return (
     <nav
@@ -32,8 +37,7 @@ export default function BottomNav() {
         <Link
           key={t.label}
           href={t.href}
-          // The deal link is a redirect route, not a page — skip the prefetch.
-          prefetch={t.label === "New deck" ? false : undefined}
+          prefetch={"prefetch" in t ? t.prefetch : undefined}
           aria-current={t.active ? "page" : undefined}
           className={`flex min-h-16 items-center justify-center text-sm font-medium ${
             t.active ? "text-terra-deep" : "text-ink-soft"

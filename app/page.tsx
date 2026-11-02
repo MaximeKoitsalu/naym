@@ -12,7 +12,18 @@ import {
   type DeckGender,
   type GenderCounts,
 } from "@/lib/deck-manifest";
-import { cleanWish, MAX_WISHES, MAX_WISH_LENGTH, sameName } from "@/lib/wishes";
+import {
+  cleanWish,
+  defaultWishGender,
+  fitsDeck,
+  MAX_WISHES,
+  MAX_WISH_LENGTH,
+  sameName,
+  wishSlots,
+  type Wish,
+  type WishGender,
+} from "@/lib/wishes";
+import { WishGenderPick } from "@/components/Us";
 
 const GENDER_OPTIONS: { value: DeckGender; label: string }[] = [
   { value: "girl", label: "a girl" },
@@ -27,22 +38,24 @@ export default function Landing() {
   const [size, setSize] = useState<number>(DEFAULT_DECK_SIZE);
   const [gender, setGender] = useState<DeckGender>("unsure");
   // Names typed here go into THIS deck as wishes (first deck included), on top of any already queued.
-  const [own, setOwn] = useState<string[]>([]);
+  const [own, setOwn] = useState<Wish[]>([]);
   const [ownText, setOwnText] = useState("");
+  // null → follows who we're naming until the partner picks.
+  const [ownGender, setOwnGender] = useState<WishGender | null>(null);
   // Dealing from a Shortlist (?deal=<own Shortlist token>): attach to it, Seen names excluded.
   const [deal, setDeal] = useState<string | null>(null);
   // The couple's unseen names per deck, carried on the deal link — sizes they can't fill are disabled.
   const [unseen, setUnseen] = useState<Record<string, GenderCounts> | undefined>();
   // Their sample names with Seen ones left out, carried on the same link.
   const [samples, setSamples] = useState<Record<string, Record<DeckGender, string>> | undefined>();
-  // Queued wishes join the dealt deck whatever the decks or gender, so they count toward the pool.
-  const [wishes, setWishes] = useState(0);
+  // Wishes already queued on the Shortlist, per gender — those that fit join the dealt deck.
+  const [wishes, setWishes] = useState({ girl: 0, boy: 0, unisex: 0 });
   const [notice, setNotice] = useState<string | null>(null);
   useEffect(() => {
     const q = new URLSearchParams(window.location.search);
     setDeal(q.get("deal"));
-    setWishes(Math.max(0, Math.min(MAX_WISHES, Number(q.get("wishes")) || 0)));
     try {
+      setWishes((w) => ({ ...w, ...JSON.parse(q.get("wishes") ?? "{}") }));
       setUnseen(JSON.parse(q.get("pool") ?? "null") ?? undefined);
       setSamples(JSON.parse(q.get("samples") ?? "null") ?? undefined);
     } catch {
@@ -52,19 +65,28 @@ export default function Landing() {
     if (g) setGender(g);
   }, []);
   useEffect(() => setNotice(null), [picked, size, gender]);
-  // shortcut: a wish borrowing an unseen curated card is counted twice, so the pool can
-  // run up to MAX_WISHES high; the server then deals a slightly smaller deck. Fine at that cap.
-  const pool = picked.length ? poolSize(picked, gender, unseen) + wishes + own.length : 0;
+  // Wishes that fit this deck's gender; a deck takes at most half its size of them.
+  const fittingWishes =
+    (Object.entries(wishes) as [WishGender, number][])
+      .filter(([g]) => fitsDeck({ name: "", gender: g }, gender))
+      .reduce((n, [, c]) => n + c, 0) + own.filter((w) => fitsDeck(w, gender)).length;
+  const curated = picked.length ? poolSize(picked, gender, unseen) : 0;
+  // shortcut: a wish borrowing an unseen curated card is counted twice, so a size can look
+  // fillable by a few names more than it is; the server then deals a slightly smaller deck.
+  const fillable = (n: number) => curated > 0 && curated + Math.min(fittingWishes, wishSlots(n)) >= n;
+  const pool = curated + fittingWishes;
   // Never deal a deck the pool can't fill: fall back to the largest size that fits.
-  const fits = DECK_SIZE_PRESETS.filter((n) => n <= pool);
-  const dealt = size <= pool ? size : (fits.at(-1) ?? size);
+  const fits = DECK_SIZE_PRESETS.filter(fillable);
+  const dealt = fillable(size) ? size : (fits.at(-1) ?? size);
 
-  const roomForWishes = MAX_WISHES - wishes - own.length;
+  const queuedWishes = wishes.girl + wishes.boy + wishes.unisex;
+  const roomForWishes = MAX_WISHES - queuedWishes - own.length;
   function addOwn(e: React.FormEvent) {
     e.preventDefault();
     const name = cleanWish(ownText);
     if (!name || roomForWishes <= 0) return;
-    if (!own.some((w) => sameName(w, name))) setOwn([...own, name]);
+    const wish = { name, gender: ownGender ?? defaultWishGender(gender) };
+    if (!own.some((w) => sameName(w.name, name))) setOwn([...own, wish]);
     setOwnText("");
   }
 
@@ -86,9 +108,11 @@ export default function Landing() {
       const json = await res.json();
       if (res.status === 409) {
         setNotice(
-          json.left === undefined
-            ? "Finish your current deck first."
-            : `Only ${json.left} names here you haven't seen together — add a deck for more.`,
+          json.full
+            ? `${MAX_WISHES} names are already waiting — remove one of yours.`
+            : json.left === undefined
+              ? "Finish your current deck first."
+              : `Only ${json.left} names here you haven't seen together — add a deck for more.`,
         );
         setBusy(false);
         return;
@@ -190,7 +214,7 @@ export default function Landing() {
                 key={n}
                 type="button"
                 onClick={() => setSize(n)}
-                disabled={n > pool}
+                disabled={!fillable(n)}
                 aria-pressed={active}
                 className={`min-h-12 flex-1 rounded-2xl border font-display text-lg transition-colors ${
                   active
@@ -204,7 +228,7 @@ export default function Landing() {
           })}
         </div>
         <p className="min-h-5 text-sm text-ink-soft" aria-live="polite">
-          {picked.length > 0 && DECK_SIZE_PRESETS.some((n) => n > pool)
+          {picked.length > 0 && DECK_SIZE_PRESETS.some((n) => !fillable(n))
             ? deal
               ? `${pool} names here you haven't seen together — add a deck for more`
               : "add a deck for more"
@@ -220,19 +244,22 @@ export default function Landing() {
         {own.length > 0 && (
           <ul className="flex flex-wrap gap-2">
             {own.map((w) => (
-              <li key={w}>
+              <li key={w.name}>
                 <button
                   type="button"
                   onClick={() => setOwn(own.filter((x) => x !== w))}
-                  aria-label={`remove ${w}`}
+                  aria-label={`remove ${w.name}`}
                   className="min-h-10 rounded-full border border-terra bg-paper-dim px-3 font-display text-lg italic text-terra-deep"
                 >
-                  {w} <span aria-hidden>×</span>
+                  {w.name}{" "}
+                  <span className="font-sans text-xs not-italic">{w.gender === "unisex" ? "either" : w.gender}</span>{" "}
+                  <span aria-hidden>×</span>
                 </button>
               </li>
             ))}
           </ul>
         )}
+        <WishGenderPick value={ownGender ?? defaultWishGender(gender)} onChange={setOwnGender} />
         <div className="flex gap-2">
           <input
             id="own-name"
@@ -251,11 +278,10 @@ export default function Landing() {
             Add
           </button>
         </div>
-        {wishes > 0 && (
-          <p className="text-sm text-ink-soft">
-            {wishes} slipped from your Shortlist {wishes === 1 ? "is" : "are"} already coming along.
-          </p>
-        )}
+        <p className="text-sm text-ink-soft">
+          {queuedWishes > 0 && `${queuedWishes} more ${queuedWishes === 1 ? "is" : "are"} waiting on your Shortlist. `}
+          Up to {wishSlots(dealt)} of your names that fit this deck join it; the rest wait for the next.
+        </p>
       </form>
 
       {notice && (
