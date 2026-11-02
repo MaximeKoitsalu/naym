@@ -1,11 +1,11 @@
 import { nanoid } from "nanoid";
-import { buildSessionDeck, clampSize, DEFAULT_DECK_ID, resolveWish, wishCard, type DeckEntry } from "./decks";
+import { buildSessionDeck, clampSize, DEFAULT_DECK_ID, wishCard, type DeckEntry } from "./decks";
 import { DEFAULT_DECK_SIZE, MIN_DECK_SIZE, type DeckGender } from "./deck-manifest";
 import { logEvent } from "./events";
 import { fitsDeck, MAX_WISHES, sameName, wishSlots, type Wish } from "./wishes";
 import { getStore, SESSION_TTL_S } from "./store";
 import {
-  addWish,
+  addWishes,
   createShortlist,
   getDeal,
   getSeen,
@@ -52,18 +52,18 @@ export async function createSession(
 ): Promise<{ creatorToken: string; sessionId: string } | null> {
   const ids = Array.isArray(deckIds) ? deckIds : [deckIds];
   // One origin → that deck verbatim (at max size); several → an even blend. Wishes take slots, like a deal.
-  const dealtWishes = wishesForDeck(typed.map(resolveWish), gender, size);
+  const dealtWishes = wishesForDeck(typed, gender, size);
   const entry = buildSessionDeck(ids, size, gender, Math.random, undefined, wishCards(dealtWishes, ids));
   if (!entry) return null; // unknown deck or empty pick — route turns this into a 400
   const shortlist = await createShortlist(gender); // mints Partner 1
   // Queued like any slip, so they leave the queue only when this deck completes; the rest wait for the next.
-  for (const w of typed) await addWish(shortlist.token, w);
+  await addWishes(shortlist.token, typed);
   return openSession(entry, { id: shortlist.id, A: 1, B: 2 }, dealtWishes.map((w) => w.name));
 }
 
 /** The wishes a deck takes, in queue order: those that fit its gender, at most half its size. */
 function wishesForDeck(wishes: Wish[], gender: DeckGender, size?: number): Wish[] {
-  return wishes.filter((w) => fitsDeck(w, gender)).slice(0, wishSlots(clampSize(size ?? DEFAULT_DECK_SIZE)));
+  return wishes.filter((w) => fitsDeck(w.gender, gender)).slice(0, wishSlots(clampSize(size ?? DEFAULT_DECK_SIZE)));
 }
 
 const wishCards = (wishes: Wish[], deckIds: string[]) =>
@@ -147,11 +147,12 @@ export async function dealSession(
   // Names typed in the builder join the queued ones — within the cap, and queued only once the deal goes through.
   const fresh = typed.filter((w) => !queued.some((q) => sameName(q.name, w.name)));
   if (queued.length + fresh.length > MAX_WISHES) return { full: true };
-  const dealtWishes = wishesForDeck([...queued, ...fresh.map(resolveWish)], gender, size);
+  const dealtWishes = wishesForDeck([...queued, ...fresh], gender, size);
   const entry = buildSessionDeck(deckIds, size, gender, Math.random, seen, wishCards(dealtWishes, deckIds));
   if (!entry) return null;
   if (entry.names.length < MIN_DECK_SIZE) return { dry: entry.names.length };
-  for (const w of fresh) await addWish(partnerTok, w);
+  // The cap was checked above, so this can't come back { full }.
+  await addWishes(partnerTok, fresh);
   const other = otherPartner(partner.partner);
   const { creatorToken, inviteToken } = await openSession(
     entry,

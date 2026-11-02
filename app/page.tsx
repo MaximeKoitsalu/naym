@@ -14,8 +14,8 @@ import {
 } from "@/lib/deck-manifest";
 import {
   cleanWish,
-  defaultWishGender,
   fitsDeck,
+  wishGenderLabel,
   MAX_WISHES,
   MAX_WISH_LENGTH,
   sameName,
@@ -23,7 +23,7 @@ import {
   type Wish,
   type WishGender,
 } from "@/lib/wishes";
-import { WishGenderPick } from "@/components/Us";
+import { useWishGender, WishGenderPick } from "@/components/Choice";
 
 const GENDER_OPTIONS: { value: DeckGender; label: string }[] = [
   { value: "girl", label: "a girl" },
@@ -40,8 +40,7 @@ export default function Landing() {
   // Names typed here go into THIS deck as wishes (first deck included), on top of any already queued.
   const [own, setOwn] = useState<Wish[]>([]);
   const [ownText, setOwnText] = useState("");
-  // null → follows who we're naming until the partner picks.
-  const [ownGender, setOwnGender] = useState<WishGender | null>(null);
+
   // Dealing from a Shortlist (?deal=<own Shortlist token>): attach to it, Seen names excluded.
   const [deal, setDeal] = useState<string | null>(null);
   // The couple's unseen names per deck, carried on the deal link — sizes they can't fill are disabled.
@@ -49,13 +48,17 @@ export default function Landing() {
   // Their sample names with Seen ones left out, carried on the same link.
   const [samples, setSamples] = useState<Record<string, Record<DeckGender, string>> | undefined>();
   // Wishes already queued on the Shortlist, per gender — those that fit join the dealt deck.
-  const [wishes, setWishes] = useState({ girl: 0, boy: 0, unisex: 0 });
+  const [wishes, setWishes] = useState<GenderCounts>({ girl: 0, boy: 0, unisex: 0 });
+  const [ownGender, setOwnGender] = useWishGender(ownText, gender);
   const [notice, setNotice] = useState<string | null>(null);
   useEffect(() => {
     const q = new URLSearchParams(window.location.search);
     setDeal(q.get("deal"));
     try {
-      setWishes((w) => ({ ...w, ...JSON.parse(q.get("wishes") ?? "{}") }));
+      const w = JSON.parse(q.get("wishes") ?? "{}");
+      // Display only (the server counts the real queue) — still, never let a bad link make NaN.
+      const n = (v: unknown) => Math.max(0, Math.min(MAX_WISHES, Number(v) || 0));
+      setWishes({ girl: n(w?.girl), boy: n(w?.boy), unisex: n(w?.unisex) });
       setUnseen(JSON.parse(q.get("pool") ?? "null") ?? undefined);
       setSamples(JSON.parse(q.get("samples") ?? "null") ?? undefined);
     } catch {
@@ -68,8 +71,8 @@ export default function Landing() {
   // Wishes that fit this deck's gender; a deck takes at most half its size of them.
   const fittingWishes =
     (Object.entries(wishes) as [WishGender, number][])
-      .filter(([g]) => fitsDeck({ name: "", gender: g }, gender))
-      .reduce((n, [, c]) => n + c, 0) + own.filter((w) => fitsDeck(w, gender)).length;
+      .filter(([g]) => fitsDeck(g, gender))
+      .reduce((n, [, c]) => n + c, 0) + own.filter((w) => fitsDeck(w.gender, gender)).length;
   const curated = picked.length ? poolSize(picked, gender, unseen) : 0;
   // shortcut: a wish borrowing an unseen curated card is counted twice, so a size can look
   // fillable by a few names more than it is; the server then deals a slightly smaller deck.
@@ -85,7 +88,7 @@ export default function Landing() {
     e.preventDefault();
     const name = cleanWish(ownText);
     if (!name || roomForWishes <= 0) return;
-    const wish = { name, gender: ownGender ?? defaultWishGender(gender) };
+    const wish = { name, gender: ownGender };
     if (!own.some((w) => sameName(w.name, name))) setOwn([...own, wish]);
     setOwnText("");
   }
@@ -252,14 +255,14 @@ export default function Landing() {
                   className="min-h-10 rounded-full border border-terra bg-paper-dim px-3 font-display text-lg italic text-terra-deep"
                 >
                   {w.name}{" "}
-                  <span className="font-sans text-xs not-italic">{w.gender === "unisex" ? "either" : w.gender}</span>{" "}
+                  <span className="font-sans text-xs not-italic">{wishGenderLabel(w.gender)}</span>{" "}
                   <span aria-hidden>×</span>
                 </button>
               </li>
             ))}
           </ul>
         )}
-        <WishGenderPick value={ownGender ?? defaultWishGender(gender)} onChange={setOwnGender} />
+        <WishGenderPick value={ownGender} onChange={setOwnGender} />
         <div className="flex gap-2">
           <input
             id="own-name"

@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSeen, getShortlistView, getWishes, resolvePartner } from "@/lib/shortlist";
 import { unseenCounts, unseenSamples } from "@/lib/decks";
 import { getDealView } from "@/lib/session";
-import { dealHref } from "@/lib/deck-manifest";
+import { dealHref, type GenderCounts } from "@/lib/deck-manifest";
+import { WISH_GENDERS } from "@/lib/wishes";
 
 /**
  * The bottom nav's "Swipe": a passive GET (writes nothing) that forwards to
@@ -26,11 +27,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ toke
     expecting: view.expecting,
     unseen: unseenCounts(seen),
     samples: unseenSamples(seen),
-    wishes: {
-      girl: wishes.filter((w) => w.gender === "girl").length,
-      boy: wishes.filter((w) => w.gender === "boy").length,
-      unisex: wishes.filter((w) => w.gender === "unisex").length,
-    },
+    wishes: Object.fromEntries(
+      WISH_GENDERS.map((g) => [g, wishes.filter((w) => w.gender === g).length]),
+    ) as GenderCounts,
   });
   return NextResponse.redirect(new URL(href, req.url));
 }

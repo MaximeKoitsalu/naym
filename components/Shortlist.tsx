@@ -4,11 +4,12 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import type { DeckGender } from "@/lib/deck-manifest";
 import type { DuelsView } from "@/lib/duels";
-import { defaultFilter, visibleEntries } from "@/lib/shortlist-filter";
+import { defaultFilter, visibleEntries, type ShortlistFilter } from "@/lib/shortlist-filter";
 import { otherHolder, remember } from "@/lib/shortlist-device";
 import type { DealView, Partner, ShortlistEntry } from "@/lib/types";
 import { DuelsButton, OrderSummary, rankClass } from "./Duels";
-import { Choice, CopyLinkButton, FILTER_OPTIONS } from "./Us";
+import { CopyLinkButton } from "./Us";
+import { Choice } from "./Choice";
 
 /*
   The Shortlist page ("Our names" in the bottom nav) — variant C, "the list is
@@ -36,6 +37,12 @@ export function KeepShortlist({ token, partner }: { token: string; partner?: Par
     </section>
   );
 }
+
+const FILTER_OPTIONS: { value: ShortlistFilter; label: string }[] = [
+  { value: "girl", label: "girl" },
+  { value: "boy", label: "boy" },
+  { value: "both", label: "both" },
+];
 
 const forWhom: Record<DeckGender, string> = {
   girl: "daughter",

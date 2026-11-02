@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createSession, dealSession } from "@/lib/session";
 import { DECK_GENDERS } from "@/lib/deck-manifest";
-import { MAX_WISHES, parseWish, sameName, type Wish } from "@/lib/wishes";
+import { tagWish } from "@/lib/decks";
+import { MAX_WISHES, sameName, type Wish } from "@/lib/wishes";
 
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
@@ -15,10 +16,10 @@ export async function POST(req: NextRequest) {
   // Omitted → "unsure" (pre-picker clients); anything else must be a known gender.
   const gender = DECK_GENDERS.find((g) => g === (body?.gender ?? "unsure"));
   if (!gender) return NextResponse.json({ error: "unknown gender" }, { status: 400 });
-  // Wishes typed in the builder ({ name, gender }): every one must pass parseWish, at most MAX_WISHES, no repeats.
+  // Wishes typed in the builder ({ name, gender }): every one must pass tagWish, at most MAX_WISHES, no repeats.
   if (body?.wishes !== undefined && !Array.isArray(body.wishes))
     return NextResponse.json({ error: "bad wishes" }, { status: 400 });
-  const wishes = ((body?.wishes ?? []) as unknown[]).map(parseWish);
+  const wishes = ((body?.wishes ?? []) as unknown[]).map(tagWish);
   if (wishes.length > MAX_WISHES || !wishes.every((w): w is Wish => w !== null))
     return NextResponse.json({ error: "bad wishes" }, { status: 400 });
   const unique = wishes.filter((w, i) => wishes.findIndex((x) => sameName(x.name, w.name)) === i);

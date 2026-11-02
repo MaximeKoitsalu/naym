@@ -3,8 +3,8 @@ import type { ShortlistEntry } from "./types";
 
 /*
   The Shortlist's girl/boy/both filter — client-safe (no store import).
-  Unisex names, wishes and pre-tag entries carry no single gender, so every
-  filter shows them. Filtering only hides; nothing is ever deleted.
+  Unisex names, "either" wishes and pre-tag entries carry no single gender, so
+  every filter shows them; a girl or boy wish filters like any card. Filtering only hides; nothing is ever deleted.
 */
 export type ShortlistFilter = "girl" | "boy" | "both";
 

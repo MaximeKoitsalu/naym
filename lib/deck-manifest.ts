@@ -84,7 +84,7 @@ export function dealHref(o: {
   unseen?: Record<string, GenderCounts>;
   samples?: Record<string, Record<DeckGender, string>>;
   /** Queued wishes per gender ("unisex" = either) — the builder counts those that fit. */
-  wishes: Record<"girl" | "boy" | "unisex", number>;
+  wishes: GenderCounts;
 }): string {
   const q = new URLSearchParams({ deal: o.token, gender: o.expecting });
   if (o.unseen) q.set("pool", JSON.stringify(o.unseen));

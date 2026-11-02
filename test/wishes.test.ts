@@ -10,7 +10,8 @@ import {
   startB,
 } from "@/lib/session";
 import { addWish, getShortlistView, getWishes, resolvePartner } from "@/lib/shortlist";
-import { buildSessionDeck, wishCard } from "@/lib/decks";
+import { buildSessionDeck, tagWish, wishCard } from "@/lib/decks";
+import { GET as getNameTag } from "@/app/api/name-tag/route";
 import { cleanWish, MAX_WISHES, MAX_WISH_LENGTH, type Wish, type WishGender } from "@/lib/wishes";
 import { getStore } from "@/lib/store";
 import { POST as postWish } from "@/app/api/shortlist/wishes/route";
@@ -92,11 +93,21 @@ describe("the wish queue", () => {
     expect(await getWishes((await resolvePartner(p1))!.shortlistId)).toHaveLength(MAX_WISHES);
   });
 
-  it("a name we already know keeps its curated tag; unknown names keep the pick", async () => {
-    const { p1 } = await couple("nordic-v1", 10);
-    await addWish(p1, w("saga", "boy")); // Saga is a girl in the nordic deck
-    await addWish(p1, w("Mirja", "girl"));
-    expect(await getWishes((await resolvePartner(p1))!.shortlistId)).toEqual([w("saga", "girl"), w("Mirja", "girl")]);
+  it("tagWish keeps a partner's pick; with no pick a known name takes its curated tag", () => {
+    expect(tagWish({ name: "saga", gender: "unisex" })).toEqual(w("Saga", "unisex")); // the pick wins
+    expect(tagWish({ name: "saga" })).toEqual(w("Saga", "girl")); // no pick → curated
+    expect(tagWish("Leif")).toEqual(w("Leif", "boy")); // an older client's bare name
+    expect(tagWish({ name: "Mirja" })).toEqual(w("Mirja", "unisex"));
+    expect(tagWish({ name: "Mirja", gender: "x" })).toBeNull();
+  });
+
+  it("GET /api/name-tag presets the picker from the curated decks", async () => {
+    const tag = async (name: string) =>
+      (await getNameTag(new NextRequest(`http://localhost/api/name-tag?name=${encodeURIComponent(name)}`))).json();
+    expect(await tag("saga")).toEqual({ gender: "girl" });
+    expect(await tag("Leif")).toEqual({ gender: "boy" });
+    expect(await tag("Mirja")).toEqual({ gender: null });
+    expect(await tag("<b>")).toEqual({ gender: null });
   });
 
   it("wishes queued before gender tags read back as 'either', or their curated tag", async () => {
@@ -299,5 +310,27 @@ describe("wishes typed in the deck builder", () => {
     expect(res.status).toBe(200);
     const dealt = (await res.json()).creatorToken;
     expect((await getStateView(dealt))!.deck.map((c) => c.name)).toContain("Mirja");
+  });
+});
+
+describe("the Swipe tab's redirect", () => {
+  const swipe = async (token: string) => {
+    const { GET } = await import("@/app/shortlist/[token]/swipe/route");
+    const res = await GET(new NextRequest(`http://localhost/shortlist/${token}/swipe`), {
+      params: Promise.resolve({ token }),
+    });
+    return new URL(res.headers.get("location")!).pathname + new URL(res.headers.get("location")!).search;
+  };
+
+  it("deals when nothing is live, sends each partner to their own deck, and waits while the partner deals", async () => {
+    const { p1, p2 } = await couple("nordic-v1", 10, "girl");
+    expect(await swipe(p1)).toMatch(/^\/\?deal=/);
+    const dealt = await deal(p1, ["greek-v1"], 10, "girl");
+    expect(await swipe(p1)).toBe(`/s/${dealt.creatorToken}`); // the dealer's own deck
+    expect(await swipe(p2)).toBe(`/shortlist/${p2}`); // the dealer hasn't finished yet
+    await swipeAll(dealt.creatorToken, () => true);
+    const invite = (await getStateView(dealt.creatorToken))!.inviteToken!;
+    expect(await swipe(p2)).toBe(`/s/${invite}`); // now it's theirs to swipe
+    expect(await swipe("nope")).toBe("/shortlist/nope");
   });
 });

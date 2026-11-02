@@ -3,7 +3,7 @@ import { getStore } from "./store";
 import { DECK_GENDERS, type DeckGender } from "./deck-manifest";
 import { logEvent } from "./events";
 import { MAX_WISHES, sameName, type Wish } from "./wishes";
-import { resolveWish } from "./decks";
+import { curatedTag } from "./decks";
 import { otherPartner, type NameCard, type Partner, type Shortlist } from "./types";
 
 /*
@@ -184,29 +184,40 @@ const wishesKey = (id: string) => `shortlist:${id}:wishes`;
 export async function getWishes(id: string): Promise<Wish[]> {
   const stored = (await getStore().get<(Wish | string)[]>(wishesKey(id))) ?? [];
   // Wishes queued before gender tags were bare names: a known name takes its curated tag, the rest fit every deck.
-  return stored.map((w) => (typeof w === "string" ? resolveWish({ name: w, gender: "unisex" }) : w));
+  return stored.map((w) => (typeof w === "string" ? { name: w, gender: curatedTag(w) ?? "unisex" } : w));
 }
 
 /**
- * Either partner slips a (cleaned) name in; a name we already know takes its
- * curated tag. A name already queued, in any case, is a no-op. `{ full }` once
- * MAX_WISHES are queued; null for an unknown token. Logs wish_slipped without the partner.
+ * Either partner slips one cleaned, tagged wish in (tagWish at the boundary).
+ * A name already queued, in any case, is a no-op. `{ full }` once MAX_WISHES
+ * are queued; null for an unknown token. Logs wish_slipped without the partner.
  */
 export async function addWish(
   token: string,
   wish: Wish,
 ): Promise<{ wishes: Wish[] } | { full: true } | null> {
+  return addWishes(token, [wish]);
+}
+
+/** Several wishes at once, in one write: all of them, or `{ full }` and none. */
+export async function addWishes(
+  token: string,
+  add: Wish[],
+): Promise<{ wishes: Wish[] } | { full: true } | null> {
   const rec = await resolvePartner(token);
   if (!rec) return null;
   const wishes = await getWishes(rec.shortlistId);
-  if (wishes.some((w) => sameName(w.name, wish.name))) return { wishes };
-  if (wishes.length >= MAX_WISHES) return { full: true };
+  const fresh = add.filter((a, i) =>
+    !wishes.some((w) => sameName(w.name, a.name)) && add.findIndex((b) => sameName(b.name, a.name)) === i,
+  );
+  if (fresh.length === 0) return { wishes };
+  if (wishes.length + fresh.length > MAX_WISHES) return { full: true };
   // shortcut: read-modify-write, so a slip and a deck completing (removeWishes) at the
   // same instant can drop one; RPUSH/LREM if it matters.
   // A new array: the memory store hands out stored values by reference, and a dealt deck holds this one.
-  const next = [...wishes, resolveWish(wish)];
+  const next = [...wishes, ...fresh];
   await getStore().set(wishesKey(rec.shortlistId), next);
-  await logEvent(null, "wish_slipped", undefined, { shortlist: rec.shortlistId });
+  for (const _ of fresh) await logEvent(null, "wish_slipped", undefined, { shortlist: rec.shortlistId });
   return { wishes: next };
 }
 

@@ -2,29 +2,18 @@
 
 import { useState } from "react";
 import type { DeckGender } from "@/lib/deck-manifest";
-import { defaultWishGender, MAX_WISHES, MAX_WISH_LENGTH, sameName, type Wish, type WishGender } from "@/lib/wishes";
+import { MAX_WISHES, MAX_WISH_LENGTH, sameName, wishGenderLabel, type Wish } from "@/lib/wishes";
+import { Choice, useWishGender, WishGenderPick } from "./Choice";
 import { replaceHolder } from "@/lib/shortlist-device";
-import type { ShortlistFilter } from "@/lib/shortlist-filter";
 import { otherPartner, type Partner } from "@/lib/types";
 
 /*
   The "Us" tab: who we're naming, the wish slip (#23), this partner's own link,
   and a fresh link for the other partner when theirs is lost. The girl/boy/both
-  filter (Choice + FILTER_OPTIONS) lives on the Shortlist itself.
+  filter lives on the Shortlist itself.
 */
 
-const WISH_GENDER_OPTIONS: { value: WishGender; label: string }[] = [
-  { value: "girl", label: "girl" },
-  { value: "boy", label: "boy" },
-  { value: "unisex", label: "either" }, // "unisex" is the code name for "either"
-];
-
-const wishLabel = (w: Wish) => `${w.name} (${WISH_GENDER_OPTIONS.find((o) => o.value === w.gender)!.label})`;
-
-/** Who a typed name is for: decks only take the wishes that fit their gender. */
-export function WishGenderPick({ value, onChange }: { value: WishGender; onChange: (g: WishGender) => void }) {
-  return <Choice legend="this name is for" options={WISH_GENDER_OPTIONS} value={value} onChange={onChange} />;
-}
+const wishLabel = (w: Wish) => `${w.name} (${wishGenderLabel(w.gender)})`;
 
 /** Variant C's paper slip. The server validates; the input only hints. */
 function WishSlip({
@@ -42,7 +31,7 @@ function WishSlip({
   onWishes: (w: Wish[]) => void;
 }) {
   const [text, setText] = useState("");
-  const [gender, setGender] = useState<WishGender>(() => defaultWishGender(expecting));
+  const [gender, setGender] = useWishGender(text, expecting);
   const [error, setError] = useState<string | null>(null);
   const full = wishes.length >= MAX_WISHES;
   const dealt = wishes.filter((w) => inDeck.some((d) => sameName(d, w.name)));
@@ -143,38 +132,6 @@ export function CopyLinkButton({
   );
 }
 
-export function Choice<T extends string>({
-  legend,
-  options,
-  value,
-  onChange,
-}: {
-  legend: string;
-  options: { value: T; label: string }[];
-  value: T;
-  onChange: (v: T) => void;
-}) {
-  return (
-    <fieldset className="flex flex-col gap-2">
-      <legend className="pb-1 text-sm text-ink-soft">{legend}</legend>
-      <div className="flex gap-2">
-        {options.map((o) => (
-          <button
-            key={o.value}
-            type="button"
-            onClick={() => onChange(o.value)}
-            aria-pressed={o.value === value}
-            className={`min-h-11 flex-1 rounded-2xl border px-2 text-sm transition-colors ${
-              o.value === value ? "border-terra bg-paper-dim text-terra-deep" : "border-ink-soft/25"
-            }`}
-          >
-            {o.label}
-          </button>
-        ))}
-      </div>
-    </fieldset>
-  );
-}
 
 /** Revokes the other partner's lost link; the fresh one is shown here only. */
 function FreshPartnerLink({ token, partner }: { token: string; partner: Partner }) {
@@ -235,11 +192,6 @@ const EXPECTING_OPTIONS: { value: DeckGender; label: string }[] = [
   { value: "unsure", label: "not sure yet" },
 ];
 
-export const FILTER_OPTIONS: { value: ShortlistFilter; label: string }[] = [
-  { value: "girl", label: "girl" },
-  { value: "boy", label: "boy" },
-  { value: "both", label: "both" },
-];
 
 export default function UsPanel({
   token,

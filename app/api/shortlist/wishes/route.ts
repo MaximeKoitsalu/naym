@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { addWish } from "@/lib/shortlist";
-import { parseWish } from "@/lib/wishes";
+import { tagWish } from "@/lib/decks";
 
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null);
-  const wish = parseWish({ name: body?.name, gender: body?.gender });
+  const wish = tagWish({ name: body?.name, gender: body?.gender });
   if (typeof body?.token !== "string" || !wish) {
     return NextResponse.json({ error: "bad request" }, { status: 400 });
   }

@@ -17,8 +17,11 @@ export type Wish = { name: string; gender: WishGender };
 export const wishSlots = (deckSize: number) => Math.floor(deckSize / 2);
 
 /** A girl or boy wish only joins decks it fits; "either" and "not sure yet" decks take any. */
-export const fitsDeck = (w: Wish, deck: DeckGender) =>
-  w.gender === "unisex" || deck === "unsure" || w.gender === deck;
+export const fitsDeck = (wish: WishGender, deck: DeckGender) =>
+  wish === "unisex" || deck === "unsure" || wish === deck;
+
+/** What couples read: "unisex" is shown as "either". */
+export const wishGenderLabel = (g: WishGender) => (g === "unisex" ? "either" : g);
 
 /** The gender a new wish starts on: who the couple is naming, or "either" when not sure yet. */
 export const defaultWishGender = (expecting: DeckGender): WishGender =>
@@ -45,6 +48,8 @@ export const sameName = (a: string, b: string) => a.toLocaleLowerCase() === b.to
 /**
  * A wish at the API boundary: `{ name, gender }`, or a bare name from an older
  * client (taken as "either"). Null when the name or the gender doesn't pass.
+ * Server routes use tagWish (lib/decks), which gives a known name its curated
+ * tag when no gender was picked.
  */
 export function parseWish(raw: unknown): Wish | null {
   if (typeof raw === "string") {
