@@ -28,7 +28,7 @@ export default async function ShortlistRoute({
       </main>
     );
   }
-  const duels = (await getDuelsView(token))!;
+  const [duels, deal] = await Promise.all([getDuelsView(token), getDealView(token)]);
   // Keyed by token: passing a shared phone over remounts, carrying no state across.
   return (
     <ShortlistPage
@@ -36,9 +36,9 @@ export default async function ShortlistRoute({
       token={token}
       partner={view.partner}
       expecting={view.expecting}
-      entries={inCombinedOrder(view.entries, duels.order)}
-      deal={await getDealView(token)}
-      duels={duels}
+      entries={inCombinedOrder(view.entries, duels!.order)}
+      deal={deal}
+      duels={duels!}
     />
   );
 }

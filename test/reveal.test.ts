@@ -95,6 +95,15 @@ describe("monotonic guard — an empty webview can never wipe progress", () => {
     const tooMany = [...all(() => true), swipe("astrid", true)];
     expect(guardSwipes(deck, [], tooMany)).toBeNull();
   });
+  it("rejects non-object items instead of crashing", () => {
+    for (const bad of [null, 42, "astrid", []]) {
+      expect(guardSwipes(deck, [], [bad as unknown as Swipe])).toBeNull();
+    }
+  });
+  it("stores only id and liked — extra fields never reach the store", () => {
+    const padded = { id: "astrid", liked: true, pad: "x".repeat(10_000) } as Swipe;
+    expect(guardSwipes(deck, [], [padded])).toEqual([swipe("astrid", true)]);
+  });
   it("rejects non-boolean liked values", () => {
     expect(
       guardSwipes(deck, [], [{ id: "astrid", liked: "yes" as unknown as boolean }]),

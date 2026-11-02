@@ -1,5 +1,5 @@
 import { nanoid } from "nanoid";
-import { getStore } from "./store";
+import { getStore, SESSION_TTL_S } from "./store";
 import { DECK_GENDERS, type DeckGender } from "./deck-manifest";
 import { logEvent } from "./events";
 import { MAX_WISHES, sameName, type Wish } from "./wishes";
@@ -17,6 +17,14 @@ export type PartnerRecord = { shortlistId: string; partner: Partner };
 export const shortlistKey = (id: string) => `shortlist:${id}`;
 export const ptokKey = (t: string) => `ptok:${t}`;
 
+/**
+ * How long a Shortlist's keys live: like a session until its first match, then
+ * for good (landMatches makes them permanent). So an abandoned or scripted first
+ * deck never leaves durable keys behind.
+ */
+const lifetime = (s: Shortlist | null) => (s && s.entries.length > 0 ? undefined : SESSION_TTL_S);
+const lifetimeOf = async (id: string) => lifetime(await getStore().get<Shortlist>(shortlistKey(id)));
+
 /** A new Shortlist with Partner 1 minted; Partner 2 waits for B's start tap. */
 export async function createShortlist(
   expecting: DeckGender = "unsure",
@@ -30,8 +38,8 @@ export async function createShortlist(
     expecting,
     entries: [],
   };
-  await store.set(shortlistKey(id), shortlist);
-  await store.set(ptokKey(token), { shortlistId: id, partner: 1 } satisfies PartnerRecord);
+  await store.set(shortlistKey(id), shortlist, SESSION_TTL_S);
+  await store.set(ptokKey(token), { shortlistId: id, partner: 1 } satisfies PartnerRecord, SESSION_TTL_S);
   return { id, token };
 }
 
@@ -44,8 +52,8 @@ export async function mintPartner(id: string, partner: Partner): Promise<string 
   if (existing) return existing;
   const token = nanoid(21);
   shortlist.partners[partner] = token;
-  await store.set(ptokKey(token), { shortlistId: id, partner } satisfies PartnerRecord);
-  await store.set(shortlistKey(id), shortlist);
+  await store.set(ptokKey(token), { shortlistId: id, partner } satisfies PartnerRecord, lifetime(shortlist));
+  await store.set(shortlistKey(id), shortlist, lifetime(shortlist));
   return token;
 }
 
@@ -68,9 +76,24 @@ export async function landMatches(id: string, cards: NameCard[]): Promise<void> 
   const have = new Set(shortlist.entries.map((e) => e.id));
   const fresh = cards.filter((c) => !have.has(c.id));
   if (fresh.length === 0) return;
+  const first = shortlist.entries.length === 0;
   const matchedAt = Date.now();
   shortlist.entries.push(...fresh.map((c) => ({ ...c, matchedAt })));
-  await store.set(shortlistKey(id), shortlist);
+  await store.set(shortlistKey(id), shortlist); // no TTL: a Shortlist with a match is kept for good
+  if (first) await keepForGood(shortlist);
+}
+
+/** The first match: every key of this Shortlist stops expiring (see lifetime). */
+async function keepForGood(shortlist: Shortlist) {
+  const store = getStore();
+  for (const partner of [1, 2] as const) {
+    const t = shortlist.partners[partner];
+    if (t) await store.set(ptokKey(t), { shortlistId: shortlist.id, partner } satisfies PartnerRecord);
+  }
+  for (const key of [seenKey(shortlist.id), dealKey(shortlist.id), wishesKey(shortlist.id)]) {
+    const v = await store.get(key);
+    if (v !== null) await store.set(key, v);
+  }
 }
 
 /** One partner's view. Never carries the other partner's token. */
@@ -118,12 +141,12 @@ export async function markSeen(id: string, cardIds: string[]): Promise<void> {
   const seen = await getSeen(id);
   if (cardIds.every((c) => seen.has(c))) return;
   for (const c of cardIds) seen.add(c);
-  await getStore().set(seenKey(id), [...seen]);
+  await getStore().set(seenKey(id), [...seen], await lifetimeOf(id));
 }
 
 /** Replaces the last deal — dealSession only allows that when nobody loses a started deck. */
 export async function recordDeal(id: string, deal: DealRecord): Promise<void> {
-  await getStore().set(dealKey(id), deal);
+  await getStore().set(dealKey(id), deal, await lifetimeOf(id));
 }
 
 export async function getDeal(id: string): Promise<DealRecord | null> {
@@ -140,7 +163,7 @@ export async function setExpecting(token: string, expecting: DeckGender): Promis
   // shortcut: read-modify-write on the Shortlist key, so a match landing at the
   // same instant can be dropped (the next reveal view re-lands it); same fix as landMatches.
   shortlist.expecting = expecting;
-  await store.set(shortlistKey(rec.shortlistId), shortlist);
+  await store.set(shortlistKey(rec.shortlistId), shortlist, lifetime(shortlist));
   return true;
 }
 
@@ -160,9 +183,9 @@ export async function reissuePartnerLink(token: string): Promise<string | null> 
   // shortcut: read-modify-write on the Shortlist key, so a match landing at the
   // same instant can be dropped (the next reveal view re-lands it); same fix as landMatches.
   const fresh = nanoid(21);
-  await store.set(ptokKey(fresh), { shortlistId: shortlist.id, partner: other } satisfies PartnerRecord);
+  await store.set(ptokKey(fresh), { shortlistId: shortlist.id, partner: other } satisfies PartnerRecord, lifetime(shortlist));
   shortlist.partners[other] = fresh;
-  await store.set(shortlistKey(shortlist.id), shortlist);
+  await store.set(shortlistKey(shortlist.id), shortlist, lifetime(shortlist));
   await store.del(ptokKey(old));
   await logEvent(null, "shortlist_link_reissued", undefined, {
     shortlist: shortlist.id,
@@ -216,7 +239,7 @@ export async function addWishes(
   // same instant can drop one; RPUSH/LREM if it matters.
   // A new array: the memory store hands out stored values by reference, and a dealt deck holds this one.
   const next = [...wishes, ...fresh];
-  await getStore().set(wishesKey(rec.shortlistId), next);
+  await getStore().set(wishesKey(rec.shortlistId), next, await lifetimeOf(rec.shortlistId));
   for (const _ of fresh) await logEvent(null, "wish_slipped", undefined, { shortlist: rec.shortlistId });
   return { wishes: next };
 }
@@ -225,5 +248,5 @@ export async function addWishes(
 export async function removeWishes(id: string, names: string[]): Promise<void> {
   const wishes = await getWishes(id);
   const left = wishes.filter((w) => !names.some((n) => sameName(n, w.name)));
-  if (left.length < wishes.length) await getStore().set(wishesKey(id), left);
+  if (left.length < wishes.length) await getStore().set(wishesKey(id), left, await lifetimeOf(id));
 }

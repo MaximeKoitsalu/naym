@@ -77,11 +77,14 @@ export function guardSwipes(
   if (incoming.length > deck.length) return null;
   const deckIds = new Set(deck.map((c) => c.id));
   const seen = new Set<string>();
-  for (const s of incoming) {
-    if (!deckIds.has(s.id) || seen.has(s.id) || typeof s.liked !== "boolean") return null;
-    seen.add(s.id);
+  for (const s of incoming as unknown[]) {
+    if (typeof s !== "object" || s === null) return null;
+    const { id, liked } = s as Partial<Swipe>;
+    if (typeof id !== "string" || !deckIds.has(id) || seen.has(id) || typeof liked !== "boolean") return null;
+    seen.add(id);
   }
-  return incoming;
+  // Only what a swipe is — extra fields a client sends never reach the store.
+  return incoming.map(({ id, liked }) => ({ id, liked }));
 }
 
 /** Completion is DERIVED — a dropped final request can't fake a dropout. */

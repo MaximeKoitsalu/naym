@@ -9,11 +9,15 @@ import { Redis } from "@upstash/redis";
     sess:{id}:swipes:A|B   → Swipe[] JSON            (TTL 30d)
     sess:{id}:r2:A|B       → Swipe[] JSON (round 2)  (TTL 30d)
     events:log             → append-only list, NO TTL (the kill metric outlives sessions)
-    shortlist:{id}         → Shortlist JSON          NO TTL (partner tokens, expecting, entries)
+    shortlist:{id}         → Shortlist JSON          NO TTL once matched (partner tokens, expecting, entries)
     ptok:{token}           → { shortlistId, partner } NO TTL (a Partner's Shortlist link; deleted on reissue)
     shortlist:{id}:seen    → string[] card ids       NO TTL (names in sessions both completed)
     shortlist:{id}:deal    → DealRecord              NO TTL (latest deck dealt from the Shortlist)
-    shortlist:{id}:wishes  → string[] (≤ 3)          NO TTL (queued wishes; leave when their deck completes)
+    shortlist:{id}:wishes  → Wish[] (≤ 25)           NO TTL (queued wishes; leave when their deck completes)
+    rl:{rule}:{ip}:{window} → number                 TTL = the rule's window (rate limits, lib/rate-limit.ts)
+
+  A Shortlist's keys (shortlist:*, ptok:*) expire like a session (30d) until its
+  first match lands, then lose their TTL for good (lib/shortlist.ts lifetime).
     duels:{id}:1|2         → { pairKey: winnerId }  NO TTL (a Partner's duel picks — server-only)
     duels:{id}:order       → CombinedOrder JSON     NO TTL (least-misery order, both partners)
 */
@@ -28,6 +32,8 @@ export interface Store {
   append(key: string, value: unknown): Promise<void>;
   range(key: string): Promise<unknown[]>;
   del(key: string): Promise<void>;
+  /** Counter for rate limits: +1, expiring `ttlS` after its first hit. Returns the new count. */
+  incr(key: string, ttlS: number): Promise<number>;
 }
 
 class MemoryStore implements Store {
@@ -57,6 +63,12 @@ class MemoryStore implements Store {
   async del(key: string): Promise<void> {
     this.kv.delete(key);
   }
+  async incr(key: string, ttlS: number): Promise<number> {
+    const n = ((await this.get<number>(key)) ?? 0) + 1;
+    const e = this.kv.get(key);
+    this.kv.set(key, { v: n, exp: e?.exp ?? Date.now() + ttlS * 1000 });
+    return n;
+  }
 }
 
 class UpstashStore implements Store {
@@ -76,6 +88,11 @@ class UpstashStore implements Store {
   }
   async del(key: string): Promise<void> {
     await this.r.del(key);
+  }
+  async incr(key: string, ttlS: number): Promise<number> {
+    const n = await this.r.incr(key);
+    if (n === 1) await this.r.expire(key, ttlS);
+    return n;
   }
 }
 
