@@ -8,7 +8,7 @@ import {
   resolveToken,
   startB,
 } from "@/lib/session";
-import { getStore } from "@/lib/store";
+import { getStore, SESSION_TTL_S } from "@/lib/store";
 import { getShortlistView } from "@/lib/shortlist";
 import { MAX_DECK_SIZE } from "@/lib/deck-manifest";
 import type { Swipe } from "@/lib/types";
@@ -174,10 +174,10 @@ describe("the Shortlist", () => {
     }
   });
 
-  it("Shortlist keys are durable (no TTL)", async () => {
+  it("Shortlist keys expire like a session until the first match", async () => {
     const { creatorToken } = await matchedSession();
     const set = getStore().set.bind(getStore());
-    const ttls: Record<string, number | undefined> = {};
+    const ttls: Record<string, number | "keep" | undefined> = {};
     getStore().set = async (key, value, ttlS) => {
       ttls[key] = ttlS;
       return set(key, value, ttlS);
@@ -185,7 +185,8 @@ describe("the Shortlist", () => {
     await startB((await getStateView(creatorToken))!.inviteToken!);
     const touched = Object.keys(ttls).filter((k) => k.startsWith("shortlist:") || k.startsWith("ptok:"));
     expect(touched.length).toBeGreaterThan(0);
-    for (const k of touched) expect(ttls[k]).toBeUndefined();
+    // No match yet when B taps Start: new keys take the session TTL, rewrites keep theirs — none goes permanent.
+    for (const k of touched) expect([SESSION_TTL_S, "keep"]).toContain(ttls[k]);
   });
 });
 

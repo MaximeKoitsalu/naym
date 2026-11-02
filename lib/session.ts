@@ -15,6 +15,7 @@ import {
   mintPartner,
   partnerToken,
   recordDeal,
+  refreshTtl,
   removeWishes,
   resolvePartner,
 } from "./shortlist";
@@ -142,6 +143,7 @@ export async function dealSession(
   const partner = await resolvePartner(partnerTok);
   if (!partner) return null;
   if (!canReplace(await liveDeal(partner.shortlistId), partner.partner)) return { busy: true };
+  await refreshTtl(partner.shortlistId); // an unmatched Shortlist lives as long as its newest deck
   const seen = await getSeen(partner.shortlistId);
   const queued = await getWishes(partner.shortlistId);
   // Names typed in the builder join the queued ones — within the cap, and queued only once the deal goes through.

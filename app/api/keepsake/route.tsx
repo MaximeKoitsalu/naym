@@ -1,3 +1,5 @@
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { ImageResponse } from "next/og";
 import { NextRequest } from "next/server";
 import { getReveal, logEvent, resolveToken } from "@/lib/session";
@@ -14,23 +16,13 @@ export const runtime = "nodejs";
 const W = 1080;
 const H = 1350;
 
-let frauncesCache: ArrayBuffer | null = null;
-async function loadFraunces(): Promise<ArrayBuffer | null> {
-  if (frauncesCache) return frauncesCache;
-  try {
-    const css = await fetch(
-      "https://fonts.googleapis.com/css2?family=Fraunces:wght@600&display=swap",
-      { headers: { "User-Agent": "Mozilla/5.0" }, signal: AbortSignal.timeout(3000) },
-    ).then((r) => r.text());
-    const url = css.match(/src: url\((.+?)\) format/)?.[1];
-    if (!url) return null;
-    frauncesCache = await fetch(url, { signal: AbortSignal.timeout(3000) }).then((r) =>
-      r.arrayBuffer(),
-    );
-    return frauncesCache;
-  } catch {
-    return null; // offline or slow — render with default serif
-  }
+// Bundled with the app (Fraunces SemiBold, SIL OFL), so a cold render never waits on Google.
+let frauncesCache: Promise<ArrayBuffer | null> | null = null;
+function loadFraunces(): Promise<ArrayBuffer | null> {
+  frauncesCache ??= readFile(join(process.cwd(), "assets/fraunces-600.ttf"))
+    .then((b) => b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) as ArrayBuffer)
+    .catch(() => null); // missing file — render with default serif
+  return frauncesCache;
 }
 
 export async function GET(req: NextRequest) {
