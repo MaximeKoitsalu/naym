@@ -2,7 +2,7 @@ import { otherPartner, type Partner } from "./types";
 
 /*
   Which Shortlist links this device remembers. LOCAL_KEY is the last link
-  opened (the landing's "Back to our Shortlist"); HOLDERS_KEY keeps each
+  opened (the bottom nav's way back); HOLDERS_KEY keeps each
   Partner's own link so one shared phone can hold both (#26). Every access
   is wrapped: private mode just means nothing is remembered.
 */

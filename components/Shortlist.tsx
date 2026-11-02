@@ -2,17 +2,19 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import type { DeckGender, GenderCounts } from "@/lib/deck-manifest";
+import type { DeckGender } from "@/lib/deck-manifest";
 import type { DuelsView } from "@/lib/duels";
-import { defaultFilter, visibleEntries } from "@/lib/shortlist-filter";
-import { lastShortlist, otherHolder, remember } from "@/lib/shortlist-device";
+import { defaultFilter, visibleEntries, type ShortlistFilter } from "@/lib/shortlist-filter";
+import { otherHolder, remember } from "@/lib/shortlist-device";
 import type { DealView, Partner, ShortlistEntry } from "@/lib/types";
-import { DuelsButton, OrderSummary, duelsStep, rankClass } from "./Duels";
-import ShortlistSheet, { CopyLinkButton } from "./ShortlistSheet";
+import { DuelsButton, OrderSummary, rankClass } from "./Duels";
+import { CopyLinkButton } from "./Us";
+import { Choice } from "./Choice";
 
 /*
-  The Shortlist page — variant C, "the list is the page" (#18): the names set
-  like the keepsake, one floating next-step button, the links in a sheet.
+  The Shortlist page ("Our names" in the bottom nav) — variant C, "the list is
+  the page" (#18): the names set like the keepsake and one floating next-step
+  button. Settings and links live on the "Us" tab, new decks on "Swipe".
 */
 
 /** On the reveal: this partner's OWN link only. */
@@ -36,22 +38,11 @@ export function KeepShortlist({ token, partner }: { token: string; partner?: Par
   );
 }
 
-/** On the landing page, when this device remembers a Shortlist link. */
-export function BackToShortlist() {
-  const [href, setHref] = useState<string | null>(null);
-  useEffect(() => {
-    setHref(lastShortlist());
-  }, []);
-  if (!href) return null;
-  return (
-    <Link
-      href={href}
-      className="self-start rounded-full bg-paper-dim px-4 py-2 text-sm font-medium text-terra-deep"
-    >
-      Back to our Shortlist →
-    </Link>
-  );
-}
+const FILTER_OPTIONS: { value: ShortlistFilter; label: string }[] = [
+  { value: "girl", label: "girl" },
+  { value: "boy", label: "boy" },
+  { value: "both", label: "both" },
+];
 
 const forWhom: Record<DeckGender, string> = {
   girl: "daughter",
@@ -89,13 +80,10 @@ function HolderStrip({ partner }: { partner: Partner }) {
 export default function ShortlistPage({
   token,
   partner,
-  expecting: initialExpecting,
+  expecting,
   entries,
   deal = null,
-  unseen,
-  samples,
   duels,
-  wishes: initialWishes = [],
 }: {
   token: string;
   partner: Partner;
@@ -103,42 +91,14 @@ export default function ShortlistPage({
   entries: ShortlistEntry[];
   /** The live dealt deck as this Partner sees it (getDealView). */
   deal?: DealView | null;
-  /** Unseen names per deck — the builder's size picker counts only these. */
-  unseen?: Record<string, GenderCounts>;
-  /** Sample names per deck and gender with Seen ones left out — the builder's labels. */
-  samples?: Record<string, Record<DeckGender, string>>;
   duels: DuelsView;
-  /** Wishes queued for the next deck — open to both partners. */
-  wishes?: string[];
 }) {
-  const [sheet, setSheet] = useState(false);
-  const [wishes, setWishes] = useState(initialWishes);
-  const [expecting, setExpecting] = useState(initialExpecting);
-  const [filter, setFilter] = useState(() => defaultFilter(initialExpecting));
+  const [filter, setFilter] = useState(() => defaultFilter(expecting));
   const shown = visibleEntries(entries, filter);
   useEffect(() => remember(token, partner), [token, partner]);
 
-  function changeExpecting(g: DeckGender) {
-    // Optimistic: the filter jumps to the new gender; a failed save reverts both.
-    const before = expecting;
-    setExpecting(g);
-    setFilter(defaultFilter(g));
-    fetch("/api/shortlist/expecting", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ token, expecting: g }),
-    })
-      .then((r) => {
-        if (!r.ok) throw new Error();
-      })
-      .catch(() => {
-        setExpecting(before);
-        setFilter(defaultFilter(before));
-      });
-  }
-
   return (
-    <main className="flex flex-1 flex-col pb-40">
+    <main className="flex flex-1 flex-col pb-[calc(var(--nav-h)+10rem)]">
       <HolderStrip partner={partner} />
       <section className="mx-6 mt-6 flex flex-col items-center rounded-[20px] bg-paper-dim px-6 py-10 text-center">
         <h1 className="text-xs uppercase tracking-widest text-ink-soft">
@@ -150,7 +110,7 @@ export default function ShortlistPage({
           </p>
         ) : shown.length === 0 ? (
           <p className="mt-6 font-display text-2xl text-ink-soft">
-            No {filter} names yet — the filter is in the sheet.
+            No {filter} names yet.
           </p>
         ) : (
           <>
@@ -184,14 +144,13 @@ export default function ShortlistPage({
           <OrderSummary order={duels.order} entries={entries} />
         </div>
       )}
-      <button
-        onClick={() => setSheet(true)}
-        className="mx-auto mt-4 min-h-11 text-sm text-ink-soft underline"
-      >
-        filter & links
-      </button>
+      {entries.length > 0 && (
+        <div className="mx-6 mt-6">
+          <Choice legend="show" options={FILTER_OPTIONS} value={filter} onChange={setFilter} />
+        </div>
+      )}
 
-      <div className="fixed inset-x-0 bottom-0 mx-auto flex w-full max-w-[480px] flex-col gap-3 bg-paper px-6 pb-8 pt-4">
+      <div className="fixed inset-x-0 bottom-[var(--nav-h)] mx-auto flex w-full max-w-[480px] flex-col gap-3 bg-paper px-6 pb-4 pt-4">
         {deal?.href && (
           <Link
             href={deal.href}
@@ -207,41 +166,9 @@ export default function ShortlistPage({
             Your partner is dealing {deal.size} new names.
           </p>
         )}
-        {/* Priority: an incoming deck, then duels, waiting, our order — then Deal. */}
+        {/* Priority: an incoming deck, then duels, waiting, our order. New decks live on "Swipe". */}
         {!deal?.href && <DuelsButton token={token} duels={duels} />}
-        {!deal || deal.canDeal ? (
-          // ?deal= makes the builder attach to THIS Shortlist instead of minting one.
-          <Link
-            href={`/?deal=${token}&gender=${expecting}${
-              unseen ? `&pool=${encodeURIComponent(JSON.stringify(unseen))}` : ""
-            }${samples ? `&samples=${encodeURIComponent(JSON.stringify(samples))}` : ""}${wishes.length ? `&wishes=${wishes.length}` : ""}`}
-            className={`min-h-14 rounded-full px-8 py-4 text-center text-lg font-medium ${
-              deal || duelsStep(duels) ? "border border-ink-soft/25" : "bg-ink text-paper"
-            }`}
-          >
-            Deal a new deck →
-          </Link>
-        ) : (
-          deal.mine && (
-            <p className="text-center text-sm text-ink-soft">Finish your current deck first.</p>
-          )
-        )}
       </div>
-
-      {sheet && (
-        <ShortlistSheet
-          token={token}
-          partner={partner}
-          expecting={expecting}
-          onExpecting={changeExpecting}
-          filter={filter}
-          onFilter={setFilter}
-          wishes={wishes}
-          wishesInDeck={deal?.wishes ?? []}
-          onWishes={setWishes}
-          onClose={() => setSheet(false)}
-        />
-      )}
     </main>
   );
 }

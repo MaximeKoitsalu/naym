@@ -105,7 +105,7 @@ export default function DuelsPlay({
   }
 
   return (
-    <main className="flex flex-1 flex-col gap-5 px-6 pt-10 pb-40">
+    <main className="flex flex-1 flex-col gap-5 px-6 pt-10 pb-[calc(var(--nav-h)+2.5rem)]">
       <header>
         <p className="text-xs uppercase tracking-widest text-ink-soft">
           your shortlist · {entries.length} names

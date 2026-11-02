@@ -5,7 +5,7 @@ import german from "@/data/decks/german.json";
 import italian from "@/data/decks/italian.json";
 import french from "@/data/decks/french.json";
 import type { NameCard } from "./types";
-import { sameName } from "./wishes";
+import { parseWish, sameName, type Wish, type WishGender } from "./wishes";
 import { shuffle } from "./reveal";
 import {
   DECK_GENDERS,
@@ -100,20 +100,40 @@ export function unseenSamples(seen: ReadonlySet<string>): Record<string, Record<
 
 /**
  * A wish as a card: a curated card with the same name (case-insensitive) is
- * borrowed whole, preferring the chosen decks; an unknown name becomes an
- * untagged wish card.
+ * borrowed whole, preferring the chosen decks; an unknown name becomes a wish card tagged with the partner's pick.
  */
-export function wishCard(name: string, preferDeckIds: string[] = []): NameCard {
+export function wishCard(
+  name: string,
+  preferDeckIds: string[] = [],
+  gender: WishGender = "unisex",
+): NameCard {
   const decks = [...preferDeckIds.map((id) => getDeckEntry(id)), ...REGISTRY.values()];
   for (const d of decks) {
     const card = d?.names.find((c) => sameName(c.name, name));
     if (card) return card;
   }
-  return { id: `wish-${name.toLocaleLowerCase()}`, name, say: "", origin: "", meaning: "", wish: true };
+  return { id: `wish-${name.toLocaleLowerCase()}`, name, say: "", origin: "", meaning: "", gender, wish: true };
+}
+
+/** The curated tag of a name we already know; null for a name nobody curated. */
+export function curatedTag(name: string): WishGender | null {
+  const card = wishCard(name);
+  return card.wish ? null : (card.gender ?? "unisex");
+}
+
+/**
+ * A wish at the API boundary: the partner's pick when they made one; with no
+ * pick, a known name takes its curated tag and an unknown one "either".
+ */
+export function tagWish(raw: unknown): Wish | null {
+  const wish = parseWish(raw);
+  if (!wish) return null;
+  const picked = typeof raw === "object" && raw !== null && (raw as { gender?: unknown }).gender !== undefined;
+  return picked ? wish : { name: wish.name, gender: curatedTag(wish.name) ?? "unisex" };
 }
 
 /** Clamp a requested deck size into [MIN_DECK_SIZE, MAX_DECK_SIZE], defaulting garbage input. */
-function clampSize(size: number): number {
+export function clampSize(size: number): number {
   if (!Number.isFinite(size)) return DEFAULT_DECK_SIZE;
   return Math.min(MAX_DECK_SIZE, Math.max(MIN_DECK_SIZE, Math.round(size)));
 }

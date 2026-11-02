@@ -131,9 +131,11 @@ test("full ritual: A swipes → handoff → B swipes blind → both reveals matc
     expect(wire).not.toContain("Saga");
     expect(wire).not.toContain("Leif");
     expect(wire).not.toContain(other.split("/").pop()!);
-    // Remembered on this device → the landing offers the way back.
+    // Remembered on this device → the bottom nav leads back, even from the landing.
     await p.goto("/");
-    await expect(p.getByRole("link", { name: "Back to our Shortlist →" })).toHaveAttribute("href", own);
+    const nav = p.getByRole("navigation", { name: "Our lists" });
+    await expect(nav.getByRole("link", { name: "Our names" })).toHaveAttribute("href", own);
+    await expect(nav.getByRole("link", { name: "Us" })).toHaveAttribute("href", `${own}/us`);
   }
 
   // Duels: A ranks Liv > Astrid > Nils, B ranks Liv > Nils > Astrid, blind.
@@ -193,7 +195,8 @@ test("full ritual: A swipes → handoff → B swipes blind → both reveals matc
     await expect(first).toHaveClass(/text-terra/);
     await expect(p.getByText("You both put Liv first.")).toBeVisible();
     await expect(p.getByRole("link", { name: "Our order is ready →" })).toBeVisible();
-    await expect(p.getByRole("link", { name: "Deal a new deck →" })).toHaveClass(/border/);
+    // New decks moved to the bottom nav's "Swipe" tab.
+    await expect(p.getByRole("navigation", { name: "Our lists" }).getByRole("link", { name: "Swipe" })).toHaveAttribute("href", `${own}/swipe`);
   }
 
   // THE BLINDNESS CONTRACT: no response B received contains A's solo like
@@ -222,18 +225,18 @@ test("full ritual: A swipes → handoff → B swipes blind → both reveals matc
   await expect(a.page.getByText("Holding the phone:")).toContainText("Partner 2");
   await a.page.goto(aShortlist);
 
-  // Wishes (#23): the slip rejects digits, queues a name, and the queue survives a reload.
-  await a.page.getByRole("button", { name: "filter & links" }).click();
+  // Wishes (#23): the slip on the "Us" tab rejects digits, queues a name, and the queue survives a reload.
+  await a.page.getByRole("navigation", { name: "Our lists" }).getByRole("link", { name: "Us" }).click();
+  await a.page.waitForURL(`**${aShortlist}/us`);
   const slip = a.page.getByRole("textbox", { name: "a name to slip into the next deck" });
   await slip.fill("R2D2");
   await a.page.getByRole("button", { name: "Slip", exact: true }).click();
   await expect(a.page.getByRole("alert").filter({ hasText: "Letters" })).toHaveText("Letters, spaces, hyphens and apostrophes only.");
   await slip.fill("mirja"); // capitalised on the way in
   await a.page.getByRole("button", { name: "Slip", exact: true }).click();
-  await expect(a.page.getByText("Waiting for the next deck: Mirja (1/3)")).toBeVisible();
+  await expect(a.page.getByText("Waiting for the next deck: Mirja (either)")).toBeVisible();
   await a.page.reload();
-  await a.page.getByRole("button", { name: "filter & links" }).click();
-  await expect(a.page.getByText("Waiting for the next deck: Mirja (1/3)")).toBeVisible();
+  await expect(a.page.getByText("Waiting for the next deck: Mirja (either)")).toBeVisible();
 
   // Fresh link (#25): A revokes B's link; B's old URL stops opening, A's still works.
   await a.page.getByRole("button", { name: "Send my partner a fresh link" }).click();

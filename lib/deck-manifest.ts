@@ -72,3 +72,23 @@ export const MIN_DECK_SIZE = 10;
 export const MAX_DECK_SIZE = 50;
 
 export type DeckSize = (typeof DECK_SIZE_PRESETS)[number];
+
+/**
+ * The builder link that deals a new deck onto a Shortlist: `?deal=` attaches it
+ * to that Shortlist; pool, samples and queued wishes size the picker. Display only —
+ * the server still refuses Seen names.
+ */
+export function dealHref(o: {
+  token: string;
+  expecting: DeckGender;
+  unseen?: Record<string, GenderCounts>;
+  samples?: Record<string, Record<DeckGender, string>>;
+  /** Queued wishes per gender ("unisex" = either) — the builder counts those that fit. */
+  wishes: GenderCounts;
+}): string {
+  const q = new URLSearchParams({ deal: o.token, gender: o.expecting });
+  if (o.unseen) q.set("pool", JSON.stringify(o.unseen));
+  if (o.samples) q.set("samples", JSON.stringify(o.samples));
+  if (Object.values(o.wishes).some(Boolean)) q.set("wishes", JSON.stringify(o.wishes));
+  return `/?${q}`;
+}

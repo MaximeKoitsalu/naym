@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import { Fraunces, Schibsted_Grotesk } from "next/font/google";
 import "./globals.css";
+import { Suspense } from "react";
+import BottomNav from "@/components/BottomNav";
 
 const fraunces = Fraunces({
   subsets: ["latin"],
@@ -23,6 +25,7 @@ export const viewport: Viewport = {
   themeColor: "#faf7f2",
   width: "device-width",
   initialScale: 1,
+  viewportFit: "cover", // lets the bottom nav pad for the home indicator
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -30,6 +33,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en" className={`${fraunces.variable} ${schibsted.variable}`}>
       <body>
         <div className="stage">{children}</div>
+        {/* useSearchParams needs a Suspense boundary. */}
+        <Suspense>
+          <BottomNav />
+        </Suspense>
       </body>
     </html>
   );
