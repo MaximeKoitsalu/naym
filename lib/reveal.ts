@@ -70,21 +70,21 @@ export function shuffle<T>(arr: T[], rand: () => number): T[] {
 export function guardSwipes(
   deck: NameCard[],
   stored: Swipe[],
-  incoming: Swipe[],
+  incoming: unknown[],
 ): Swipe[] | null {
   if (isComplete(deck, stored)) return null;
   if (incoming.length < stored.length) return null;
   if (incoming.length > deck.length) return null;
   const deckIds = new Set(deck.map((c) => c.id));
   const seen = new Set<string>();
-  for (const s of incoming as unknown[]) {
+  for (const s of incoming) {
     if (typeof s !== "object" || s === null) return null;
     const { id, liked } = s as Partial<Swipe>;
     if (typeof id !== "string" || !deckIds.has(id) || seen.has(id) || typeof liked !== "boolean") return null;
     seen.add(id);
   }
   // Only what a swipe is — extra fields a client sends never reach the store.
-  return incoming.map(({ id, liked }) => ({ id, liked }));
+  return (incoming as Swipe[]).map(({ id, liked }) => ({ id, liked }));
 }
 
 /** Completion is DERIVED — a dropped final request can't fake a dropout. */

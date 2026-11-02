@@ -9,25 +9,29 @@ import { Redis } from "@upstash/redis";
     sess:{id}:swipes:A|B   → Swipe[] JSON            (TTL 30d)
     sess:{id}:r2:A|B       → Swipe[] JSON (round 2)  (TTL 30d)
     events:log             → append-only list, NO TTL (the kill metric outlives sessions)
-    shortlist:{id}         → Shortlist JSON          NO TTL once matched (partner tokens, expecting, entries)
-    ptok:{token}           → { shortlistId, partner } NO TTL (a Partner's Shortlist link; deleted on reissue)
-    shortlist:{id}:seen    → string[] card ids       NO TTL (names in sessions both completed)
-    shortlist:{id}:deal    → DealRecord              NO TTL (latest deck dealt from the Shortlist)
-    shortlist:{id}:wishes  → Wish[] (≤ 25)           NO TTL (queued wishes; leave when their deck completes)
-    rl:{rule}:{ip}:{window} → number                 TTL = the rule's window (rate limits, lib/rate-limit.ts)
+    shortlist:{id}         → Shortlist JSON          (partner tokens, expecting, entries)
+    ptok:{token}           → { shortlistId, partner } (a Partner's Shortlist link; deleted on reissue)
+    shortlist:{id}:seen    → string[] card ids       (names in sessions both completed)
+    shortlist:{id}:deal    → DealRecord              (latest deck dealt from the Shortlist)
+    shortlist:{id}:wishes  → Wish[] (≤ 25)           (queued wishes; leave when their deck completes)
+    duels:{id}:1|2         → { pairKey: winnerId }   NO TTL (a Partner's duel picks — server-only)
+    duels:{id}:order       → CombinedOrder JSON      NO TTL (least-misery order, both partners)
+    rl:{rule}:{ip}:{window} → number                 (TTL = the rule's window; lib/rate-limit.ts)
 
-  A Shortlist's keys (shortlist:*, ptok:*) expire like a session (30d) until its
-  first match lands, then lose their TTL for good (lib/shortlist.ts lifetime).
-    duels:{id}:1|2         → { pairKey: winnerId }  NO TTL (a Partner's duel picks — server-only)
-    duels:{id}:order       → CombinedOrder JSON     NO TTL (least-misery order, both partners)
+  The shortlist:* and ptok:* keys expire like a session (30d, refreshed when a
+  deck is dealt) until the Shortlist's first match, then never (lib/shortlist.ts).
+  duels:* only exist once there are matches.
 */
 
 export const SESSION_TTL_S = 30 * 24 * 60 * 60;
 
 export interface Store {
   get<T>(key: string): Promise<T | null>;
-  /** Sets value and refreshes TTL (except durable keys, which never expire). */
-  set(key: string, value: unknown, ttlS?: number): Promise<void>;
+  /**
+   * Sets value. `ttlS` sets a fresh TTL; none makes the key permanent; "keep"
+   * keeps whatever TTL the key already has (Redis KEEPTTL).
+   */
+  set(key: string, value: unknown, ttlS?: number | "keep"): Promise<void>;
   /** Durable append — no TTL, survives session expiry. */
   append(key: string, value: unknown): Promise<void>;
   range(key: string): Promise<unknown[]>;
@@ -49,8 +53,9 @@ class MemoryStore implements Store {
     }
     return e.v as T;
   }
-  async set(key: string, value: unknown, ttlS?: number): Promise<void> {
-    this.kv.set(key, { v: value, exp: ttlS ? Date.now() + ttlS * 1000 : null });
+  async set(key: string, value: unknown, ttlS?: number | "keep"): Promise<void> {
+    const exp = ttlS === "keep" ? (this.kv.get(key)?.exp ?? null) : ttlS ? Date.now() + ttlS * 1000 : null;
+    this.kv.set(key, { v: value, exp });
   }
   async append(key: string, value: unknown): Promise<void> {
     const l = this.lists.get(key) ?? [];
@@ -76,8 +81,9 @@ class UpstashStore implements Store {
   async get<T>(key: string): Promise<T | null> {
     return (await this.r.get<T>(key)) ?? null;
   }
-  async set(key: string, value: unknown, ttlS?: number): Promise<void> {
-    if (ttlS) await this.r.set(key, JSON.stringify(value), { ex: ttlS });
+  async set(key: string, value: unknown, ttlS?: number | "keep"): Promise<void> {
+    if (ttlS === "keep") await this.r.set(key, JSON.stringify(value), { keepTtl: true });
+    else if (ttlS) await this.r.set(key, JSON.stringify(value), { ex: ttlS });
     else await this.r.set(key, JSON.stringify(value));
   }
   async append(key: string, value: unknown): Promise<void> {
@@ -90,8 +96,8 @@ class UpstashStore implements Store {
     await this.r.del(key);
   }
   async incr(key: string, ttlS: number): Promise<number> {
-    const n = await this.r.incr(key);
-    if (n === 1) await this.r.expire(key, ttlS);
+    // One transaction, so a counter can never be left without its expiry.
+    const [n] = await this.r.multi().incr(key).expire(key, ttlS).exec<[number, number]>();
     return n;
   }
 }

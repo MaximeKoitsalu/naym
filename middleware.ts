@@ -26,4 +26,5 @@ export async function middleware(req: NextRequest) {
   return NextResponse.next();
 }
 
-export const config = { matcher: "/api/:path*" };
+// Node, not Edge: it then runs in fra1 with the functions, next to the database (vercel.json).
+export const config = { matcher: "/api/:path*", runtime: "nodejs" };

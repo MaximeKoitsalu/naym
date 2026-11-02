@@ -17,13 +17,17 @@ export type PartnerRecord = { shortlistId: string; partner: Partner };
 export const shortlistKey = (id: string) => `shortlist:${id}`;
 export const ptokKey = (t: string) => `ptok:${t}`;
 
-/**
- * How long a Shortlist's keys live: like a session until its first match, then
- * for good (landMatches makes them permanent). So an abandoned or scripted first
- * deck never leaves durable keys behind.
- */
-const lifetime = (s: Shortlist | null) => (s && s.entries.length > 0 ? undefined : SESSION_TTL_S);
-const lifetimeOf = async (id: string) => lifetime(await getStore().get<Shortlist>(shortlistKey(id)));
+/*
+  How long a Shortlist's keys live: like a session until its first match, then
+  for good. So an abandoned or scripted first deck never leaves durable keys.
+  - createShortlist sets the session TTL; dealing a deck refreshes it (refreshTtl).
+  - Rewrites of the Shortlist key keep its TTL as it is ("keep"), so a stale copy
+    can never put an expiry back on a Shortlist that has matches.
+  - landMatches drops the TTL on the first match (keepForGood).
+  New keys of the family take ttlFor(the Shortlist as just read).
+*/
+const ttlFor = (s: Shortlist | null) => (s && s.entries.length > 0 ? undefined : SESSION_TTL_S);
+const ttlForId = async (id: string) => ttlFor(await getStore().get<Shortlist>(shortlistKey(id)));
 
 /** A new Shortlist with Partner 1 minted; Partner 2 waits for B's start tap. */
 export async function createShortlist(
@@ -52,8 +56,8 @@ export async function mintPartner(id: string, partner: Partner): Promise<string 
   if (existing) return existing;
   const token = nanoid(21);
   shortlist.partners[partner] = token;
-  await store.set(ptokKey(token), { shortlistId: id, partner } satisfies PartnerRecord, lifetime(shortlist));
-  await store.set(shortlistKey(id), shortlist, lifetime(shortlist));
+  await store.set(ptokKey(token), { shortlistId: id, partner } satisfies PartnerRecord, ttlFor(shortlist));
+  await store.set(shortlistKey(id), shortlist, "keep");
   return token;
 }
 
@@ -76,14 +80,14 @@ export async function landMatches(id: string, cards: NameCard[]): Promise<void> 
   const have = new Set(shortlist.entries.map((e) => e.id));
   const fresh = cards.filter((c) => !have.has(c.id));
   if (fresh.length === 0) return;
-  const first = shortlist.entries.length === 0;
   const matchedAt = Date.now();
   shortlist.entries.push(...fresh.map((c) => ({ ...c, matchedAt })));
   await store.set(shortlistKey(id), shortlist); // no TTL: a Shortlist with a match is kept for good
-  if (first) await keepForGood(shortlist);
+  // Every landing, not just the first: it also undoes a TTL a racing refreshTtl may have set.
+  await keepForGood(shortlist);
 }
 
-/** The first match: every key of this Shortlist stops expiring (see lifetime). */
+/** Once matched, every key of this Shortlist stops expiring. Idempotent. */
 async function keepForGood(shortlist: Shortlist) {
   const store = getStore();
   for (const partner of [1, 2] as const) {
@@ -93,6 +97,21 @@ async function keepForGood(shortlist: Shortlist) {
   for (const key of [seenKey(shortlist.id), dealKey(shortlist.id), wishesKey(shortlist.id)]) {
     const v = await store.get(key);
     if (v !== null) await store.set(key, v);
+  }
+}
+
+/** A deck dealt on a Shortlist with no match yet: its keys get a fresh session TTL. */
+export async function refreshTtl(id: string): Promise<void> {
+  const store = getStore();
+  const shortlist = await store.get<Shortlist>(shortlistKey(id));
+  if (!shortlist || shortlist.entries.length > 0) return;
+  // shortcut: read-then-write; a match landing in between would get this TTL back
+  // until the next match or reveal view re-lands it (keepForGood). Dealing waits on
+  // a finished deck, so the two only meet on a completion racing a deal.
+  await store.set(shortlistKey(id), shortlist, SESSION_TTL_S);
+  for (const partner of [1, 2] as const) {
+    const t = shortlist.partners[partner];
+    if (t) await store.set(ptokKey(t), { shortlistId: id, partner } satisfies PartnerRecord, SESSION_TTL_S);
   }
 }
 
@@ -141,12 +160,12 @@ export async function markSeen(id: string, cardIds: string[]): Promise<void> {
   const seen = await getSeen(id);
   if (cardIds.every((c) => seen.has(c))) return;
   for (const c of cardIds) seen.add(c);
-  await getStore().set(seenKey(id), [...seen], await lifetimeOf(id));
+  await getStore().set(seenKey(id), [...seen], await ttlForId(id));
 }
 
 /** Replaces the last deal — dealSession only allows that when nobody loses a started deck. */
 export async function recordDeal(id: string, deal: DealRecord): Promise<void> {
-  await getStore().set(dealKey(id), deal, await lifetimeOf(id));
+  await getStore().set(dealKey(id), deal, await ttlForId(id));
 }
 
 export async function getDeal(id: string): Promise<DealRecord | null> {
@@ -163,7 +182,7 @@ export async function setExpecting(token: string, expecting: DeckGender): Promis
   // shortcut: read-modify-write on the Shortlist key, so a match landing at the
   // same instant can be dropped (the next reveal view re-lands it); same fix as landMatches.
   shortlist.expecting = expecting;
-  await store.set(shortlistKey(rec.shortlistId), shortlist, lifetime(shortlist));
+  await store.set(shortlistKey(rec.shortlistId), shortlist, "keep");
   return true;
 }
 
@@ -183,9 +202,9 @@ export async function reissuePartnerLink(token: string): Promise<string | null> 
   // shortcut: read-modify-write on the Shortlist key, so a match landing at the
   // same instant can be dropped (the next reveal view re-lands it); same fix as landMatches.
   const fresh = nanoid(21);
-  await store.set(ptokKey(fresh), { shortlistId: shortlist.id, partner: other } satisfies PartnerRecord, lifetime(shortlist));
+  await store.set(ptokKey(fresh), { shortlistId: shortlist.id, partner: other } satisfies PartnerRecord, ttlFor(shortlist));
   shortlist.partners[other] = fresh;
-  await store.set(shortlistKey(shortlist.id), shortlist, lifetime(shortlist));
+  await store.set(shortlistKey(shortlist.id), shortlist, "keep");
   await store.del(ptokKey(old));
   await logEvent(null, "shortlist_link_reissued", undefined, {
     shortlist: shortlist.id,
@@ -239,7 +258,7 @@ export async function addWishes(
   // same instant can drop one; RPUSH/LREM if it matters.
   // A new array: the memory store hands out stored values by reference, and a dealt deck holds this one.
   const next = [...wishes, ...fresh];
-  await getStore().set(wishesKey(rec.shortlistId), next, await lifetimeOf(rec.shortlistId));
+  await getStore().set(wishesKey(rec.shortlistId), next, await ttlForId(rec.shortlistId));
   for (const _ of fresh) await logEvent(null, "wish_slipped", undefined, { shortlist: rec.shortlistId });
   return { wishes: next };
 }
@@ -248,5 +267,5 @@ export async function addWishes(
 export async function removeWishes(id: string, names: string[]): Promise<void> {
   const wishes = await getWishes(id);
   const left = wishes.filter((w) => !names.some((n) => sameName(n, w.name)));
-  if (left.length < wishes.length) await getStore().set(wishesKey(id), left, await lifetimeOf(id));
+  if (left.length < wishes.length) await getStore().set(wishesKey(id), left, await ttlForId(id));
 }
